@@ -64,14 +64,11 @@ export default function DrawCell({ hover, setHover, drawCount }: Props) {
           paddingTop: 8,
         }}
       >
-        <span style={{ fontSize: 13, fontWeight: 600 }}>
-          최근:{" "}
-          <span className="font-mono" style={{ fontWeight: 400, opacity: 0.7 }}>
-            untitled-05-16.psd
-          </span>
+        <span className="font-mono" style={{ fontSize: 10, letterSpacing: "0.2em", opacity: 0.5 }}>
+          NO PIECES YET · 첫 그림 업로드 대기 중
         </span>
-        <span className="font-mono" style={{ fontSize: 10, letterSpacing: "0.2em" }}>
-          NEW (8) ●
+        <span className="font-mono" style={{ fontSize: 10, letterSpacing: "0.2em", opacity: 0.5 }}>
+          ─
         </span>
       </div>
     </Cell>

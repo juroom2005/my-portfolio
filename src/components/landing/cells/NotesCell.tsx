@@ -2,18 +2,36 @@
 
 import { useEffect, useState } from "react";
 import { Cell, CellHead } from "../Cell";
-import { NOTES } from "../data";
 
 type Props = {
   hover: string | null;
   setHover: (v: string | null) => void;
   noteCount: number;
+  recentTitles?: { d: string; t: string }[]; // 나중에 DB에서 받을 자리
 };
 
-export default function NotesCell({ hover, setHover, noteCount }: Props) {
+// 컨텐츠 없을 때 흐르는 예시 문구
+const PLACEHOLDER: { d: string; t: string }[] = [
+  { d: "—", t: "PERSONAL WEB SPACE" },
+  { d: "—", t: "개인적인 작업과 수집을 위한 사적인 인덱스" },
+  { d: "—", t: "그림 · 사진 · 일기 · 글 · 음악 · 책갈피 · 코드" },
+  { d: "—", t: "첫 글을 작성해보세요" },
+];
+
+export default function NotesCell({ hover, setHover, noteCount, recentTitles }: Props) {
+  // 실데이터 있으면 그거 쓰고, 없으면 플레이스홀더
+  const items =
+    recentTitles && recentTitles.length > 0 ? recentTitles : PLACEHOLDER;
+
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
   const [progress, setProgress] = useState(0);
+
+  // items가 바뀌면 idx 리셋 (실데이터 들어왔을 때 대비)
+  useEffect(() => {
+    setIdx(0);
+    setProgress(0);
+  }, [items]);
 
   useEffect(() => {
     if (paused) return;
@@ -24,7 +42,7 @@ export default function NotesCell({ hover, setHover, noteCount }: Props) {
       if (start === undefined) start = ts;
       const p = (ts - start) / dur;
       if (p >= 1) {
-        setIdx((i) => (i + 1) % NOTES.length);
+        setIdx((i) => (i + 1) % items.length);
         start = ts;
         setProgress(0);
       } else {
@@ -34,9 +52,10 @@ export default function NotesCell({ hover, setHover, noteCount }: Props) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [paused]);
+  }, [paused, items.length]);
 
-  const n = NOTES[idx];
+  const n = items[idx];
+  const isPlaceholder = !recentTitles || recentTitles.length === 0;
 
   return (
     <Cell id="notes" hover={hover} setHover={setHover} style={{ gridColumn: "span 7", gridRow: "span 1" }}>
@@ -57,7 +76,12 @@ export default function NotesCell({ hover, setHover, noteCount }: Props) {
             <div
               key={idx}
               className="font-mono"
-              style={{ fontSize: 11, lineHeight: 1.55, animation: "fadeUp .4s ease both" }}
+              style={{
+                fontSize: 11,
+                lineHeight: 1.55,
+                animation: "fadeUp .4s ease both",
+                opacity: isPlaceholder ? 0.6 : 1,
+              }}
             >
               <span style={{ opacity: 0.5 }}>{n.d}</span> &nbsp; {n.t}
             </div>
@@ -68,13 +92,13 @@ export default function NotesCell({ hover, setHover, noteCount }: Props) {
                     position: "absolute",
                     inset: 0,
                     width: `${progress * 100}%`,
-                    background: "var(--neon-deep)",
+                    background: isPlaceholder ? "rgba(0,0,0,0.3)" : "var(--neon-deep)",
                     transition: paused ? "none" : "width .1s linear",
                   }}
                 />
               </div>
               <div className="font-mono" style={{ fontSize: 9, letterSpacing: "0.2em", opacity: 0.6 }}>
-                {String(idx + 1).padStart(2, "0")} / {String(NOTES.length).padStart(2, "0")}
+                {String(idx + 1).padStart(2, "0")} / {String(items.length).padStart(2, "0")}
               </div>
             </div>
           </div>

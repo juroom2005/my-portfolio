@@ -10,7 +10,11 @@ type Props = {
 };
 
 export default function CodeCell({ hover, setHover, codeCount }: Props) {
-  const lines = ["> ls -la", `> ${codeCount} scripts`, "> cat me.json"];
+  const lines = [
+    "> ls -la",
+    codeCount > 0 ? `> ${codeCount} scripts` : "> no scripts yet",
+    "> cat me.json",
+  ];
   const [text, setText] = useState("");
   const [li, setLi] = useState(0);
 

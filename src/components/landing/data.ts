@@ -38,7 +38,7 @@ export const COUNTS = {
 
 
 export const PROFILE = {
-  avatarUrl: "/avatar.png", // public/avatar.png에 넣으세요. 없으면 일단 비워두고 이니셜로
+  avatarUrl: "/octopus.png", // public/avatar.png에 넣으세요. 없으면 일단 비워두고 이니셜로
   nickname: "Pollonia",
   handle: "@juroom2005",
   email: "mode20059841@gmail.com",

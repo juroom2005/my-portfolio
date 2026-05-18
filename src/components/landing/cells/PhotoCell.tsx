@@ -82,8 +82,8 @@ export default function PhotoCell({ hover, setHover, photoCount }: Props) {
             display: "flex", justifyContent: "space-between",
           }}
         >
-          <span>ROLL #{photoCount}</span>
-          <span style={{ color: "var(--neon)" }}>+12 THIS WEEK ↑</span>
+          <span>ROLL #00</span>
+          <span style={{ opacity: 0.5 }}>NO FRAMES YET</span>
         </div>
       </div>
     </Cell>
