@@ -1,26 +1,104 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* ---- Tailwind v4 theme tokens ----
+ * Custom palette + font variables exposed to Tailwind utilities and CSS vars.
+ * Use as: bg-paper, text-ink, bg-neon, font-display, etc.
+ */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  --color-ink: #0A0A0A;
+  --color-bg: #F2F2EE;
+  --color-bg-warm: #ECEAE2;
+  --color-paper: #FAFAF7;
+  --color-neon: #B4FF3A;
+  --color-neon-deep: #8FE600;
+  --color-neon-soft: #DAFF85;
+  --color-mute: #6F6F6A;
+
+  --font-sans: var(--font-pretendard), var(--font-geist-sans), system-ui, sans-serif;
+  --font-display: var(--font-archivo), var(--font-pretendard), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: #FAFAF7;
+  --foreground: #0A0A0A;
+
+  /* Raw token aliases for inline-style usage in legacy components */
+  --ink: #0A0A0A;
+  --bg: #F2F2EE;
+  --paper: #FAFAF7;
+  --neon: #B4FF3A;
+  --neon-deep: #8FE600;
+  --neon-soft: #DAFF85;
+}
+
+/* Pretendard via CDN — covers Korean glyphs without bloating the bundle */
+@font-face {
+  font-family: "Pretendard";
+  src: url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pretendard";
+  src: url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/woff2/Pretendard-Black.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --font-pretendard: "Pretendard", "Pretendard Variable";
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+/* Shared keyframes used across landing components */
+@keyframes pulseDot {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50%      { opacity: 1;   transform: scale(1.4); }
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes paletteIn {
+  from { opacity: 0; transform: translate(-50%, -46%) scale(0.98); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
