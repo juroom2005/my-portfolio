@@ -22,6 +22,8 @@ const DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 
 type Props = {
   categories: CategoryWithCount[];
+  user: { email: string } | null;
+  isAdmin: boolean;
 };
 
 /**
@@ -62,7 +64,7 @@ function renderCell(
   }
 }
 
-export default function IndexLanding({ categories }: Props) {
+export default function IndexLanding({ categories, user, isAdmin }: Props) {
   const [hover, setHover] = useState<string | null>(null);
   const [mouse, setMouse] = useState({ x: -1000, y: -1000 });
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -115,12 +117,52 @@ export default function IndexLanding({ categories }: Props) {
           <span>ISSUE 04 · MAY 2026 · PRIVATE INDEX</span>
           <span style={{ background: "var(--ink)", color: "var(--neon)", padding: "2px 6px" }}>{time}</span>
         </div>
-        <nav className="font-mono" style={{ fontSize: 10, letterSpacing: "0.3em", fontWeight: 700, display: "flex", gap: 18 }}>
-          <span>INDEX</span>
-          <span style={{ opacity: 0.4 }}>ARCHIVE</span>
-          <span style={{ opacity: 0.4 }}>TIMELINE</span>
-          <span style={{ opacity: 0.4 }}>UPLOAD</span>
-        </nav>
+        <nav className="font-mono" style={{ fontSize: 10, letterSpacing: "0.3em", fontWeight: 700, display: "flex", gap: 18, alignItems: "center" }}>
+        <span>INDEX</span>
+        <span style={{ opacity: 0.4 }}>ARCHIVE</span>
+        <span style={{ opacity: 0.4 }}>TIMELINE</span>
+        {isAdmin && (
+          <a href="/settings" style={{ color: "inherit", textDecoration: "none" }}>
+            SETTINGS
+          </a>
+        )}
+        {user ? (
+          <form action="/auth/signout" method="post" style={{ display: "inline" }}>
+            <button
+              type="submit"
+              className="font-mono"
+              style={{
+                border: "1px solid var(--ink)",
+                background: "var(--paper)",
+                padding: "2px 8px",
+                fontSize: 10,
+                letterSpacing: "0.3em",
+                fontWeight: 700,
+                cursor: "none",
+              }}
+            >
+              LOG OUT
+            </button>
+          </form>
+        ) : (
+            <a
+            href="/login"
+            className="font-mono"
+            style={{
+              border: "1px solid var(--ink)",
+              background: "var(--neon)",
+              padding: "2px 8px",
+              fontSize: 10,
+              letterSpacing: "0.3em",
+              fontWeight: 700,
+              textDecoration: "none",
+              color: "inherit",
+            }}
+          >
+            LOG IN
+          </a>
+        )}
+      </nav>
         <button
           type="button"
           onClick={() => setPaletteOpen(true)}
@@ -158,7 +200,7 @@ export default function IndexLanding({ categories }: Props) {
           className="font-display"
           style={{ fontSize: 110, fontWeight: 900, lineHeight: 0.85, letterSpacing: "-0.08em" }}
         >
-          POLLONIA<span style={{ color: "var(--neon-deep)" }}>·</span>WEB
+          MODID<span style={{ color: "var(--neon-deep)" }}>·</span>WEB
         </div>
         <div style={{ borderLeft: "1px solid var(--ink)", paddingLeft: 18, maxWidth: 340, fontSize: 12, lineHeight: 1.6, marginBottom: 8 }}>
           포트폴리오, OC 리스트 등
@@ -218,7 +260,7 @@ export default function IndexLanding({ categories }: Props) {
         }}
       >
         <span style={{ fontSize: 9, letterSpacing: "0.25em", opacity: 0.6 }}>
-          EOF · ROOM 404 · MAINTAINED BY ONE PERSON · LAST SYNC {time} KST
+          MODID · PAGE · MAINTAINED BY ONE PERSON · LAST SYNC {time} KST
         </span>
         <span style={{ fontSize: 9, letterSpacing: "0.25em", opacity: 0.6 }}>↑ ↓ NAVIGATE · ⏎ OPEN · ⌘K SEARCH</span>
       </footer>

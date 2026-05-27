@@ -39,10 +39,10 @@ export const COUNTS = {
 
 export const PROFILE = {
   avatarUrl: "/octopus.png", // public/avatar.png에 넣으세요. 없으면 일단 비워두고 이니셜로
-  nickname: "Pollonia",
-  handle: "@juroom2005",
+  nickname: "MODID",
+  handle: "@MODID",
   email: "mode20059841@gmail.com",
-  bio: "Hi, I'm Pollonia. This is my personal web space for sharing my works and more. Welcome and enjoy😄",
+  bio: "Hi, I'm MODID. This is my personal web space for sharing my works and more. Welcome and enjoy😄",
   since: "EST.2026",
   links: [
     { label: "GitHub",    href: "https://github.com/juroom2005",   kind: "sns"  },
