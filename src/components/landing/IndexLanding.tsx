@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useClock, usePaletteHotkey } from "./hooks";
 import CommandPalette from "./CommandPalette";
 import DiamondCursor from "./DiamondCursor";
+import DrawingsBranchPopup from "./DrawingsBranchPopup";
 
 import DrawCell from "./cells/DrawCell";
 import PhotoCell from "./cells/PhotoCell";
@@ -38,13 +39,14 @@ function renderCell(
     setHover: (v: string | null) => void;
     dragOver: boolean;
     setDragOver: (v: boolean) => void;
+    openDrawings: () => void;
   },
 ) {
-  const { hover, setHover, dragOver, setDragOver } = ctx;
+  const { hover, setHover, dragOver, setDragOver, openDrawings } = ctx;
 
   switch (variant) {
     case "draw":
-      return <DrawCell hover={hover} setHover={setHover} drawCount={count} />;
+      return <DrawCell hover={hover} setHover={setHover} drawCount={count} onOpen={openDrawings} />;
     case "photo":
       return <PhotoCell hover={hover} setHover={setHover} photoCount={count} />;
     case "journal":
@@ -69,6 +71,7 @@ export default function IndexLanding({ categories, user, isAdmin }: Props) {
   const [mouse, setMouse] = useState({ x: -1000, y: -1000 });
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [branchOpen, setBranchOpen] = useState(false);
 
   const clock = useClock();
   usePaletteHotkey(setPaletteOpen, () => setPaletteOpen(false));
@@ -79,15 +82,21 @@ export default function IndexLanding({ categories, user, isAdmin }: Props) {
   ? `${pad(clock.getHours())}:${pad(clock.getMinutes())}:${pad(clock.getSeconds())}`
   : "--:--:--";
 
-  const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    setMouse({ x: e.clientX, y: e.clientY });
-  };
+  useEffect(() => {
+  const onMove = (e: MouseEvent) => setMouse({ x: e.clientX, y: e.clientY });
   const onLeave = () => setMouse({ x: -1000, y: -1000 });
+
+  window.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseleave", onLeave);
+
+  return () => {
+    window.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseleave", onLeave);
+  };
+}, []);
 
   return (
     <div
-      onMouseMove={onMove}
-      onMouseLeave={onLeave}
       style={{
         background: "var(--paper)",
         color: "var(--ink)",
@@ -243,7 +252,13 @@ export default function IndexLanding({ categories, user, isAdmin }: Props) {
       >
         {categories.map((cat) => (
           <div key={cat.id} style={{ display: "contents" }}>
-            {renderCell(cat.cell_variant, cat.count, { hover, setHover, dragOver, setDragOver })}
+            {renderCell(cat.cell_variant, cat.count, {
+              hover,
+              setHover,
+              dragOver,
+              setDragOver,
+              openDrawings: () => setBranchOpen(true),
+            })}
           </div>
         ))}
       </div>
@@ -266,6 +281,7 @@ export default function IndexLanding({ categories, user, isAdmin }: Props) {
       </footer>
       <IDCard />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <DrawingsBranchPopup open={branchOpen} onClose={() => setBranchOpen(false)} />
     </div>
   );
 }

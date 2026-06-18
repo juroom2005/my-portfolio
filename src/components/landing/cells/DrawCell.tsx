@@ -6,6 +6,8 @@ type Props = {
   hover: string | null;
   setHover: (v: string | null) => void;
   drawCount: number;
+  /** 클릭 시 두-갈래 분기 팝업을 연다. IndexLanding 에서 주입. */
+  onOpen?: () => void;
 };
 
 function Mosaic() {
@@ -36,9 +38,9 @@ function Mosaic() {
   );
 }
 
-export default function DrawCell({ hover, setHover, drawCount }: Props) {
+export default function DrawCell({ hover, setHover, drawCount, onOpen }: Props) {
   return (
-    <Cell id="draw" hover={hover} setHover={setHover} neon style={{ gridColumn: "span 5", gridRow: "span 2" }}>
+    <Cell id="draw" hover={hover} setHover={setHover} neon onClick={onOpen} style={{ gridColumn: "span 5", gridRow: "span 2" }}>
       <CellHead idx="01" name="DRAWINGS · 그림" count={drawCount} suffix=" PIECES" live />
       <div style={{ flex: 1, display: "flex", alignItems: "flex-end", gap: 24 }}>
         <div>
@@ -65,10 +67,10 @@ export default function DrawCell({ hover, setHover, drawCount }: Props) {
         }}
       >
         <span className="font-mono" style={{ fontSize: 10, letterSpacing: "0.2em", opacity: 0.5 }}>
-          NO PIECES YET · 첫 그림 업로드 대기 중
+          포트폴리오 · OC 목록 두 갈래
         </span>
         <span className="font-mono" style={{ fontSize: 10, letterSpacing: "0.2em", opacity: 0.5 }}>
-          ─
+          ↗
         </span>
       </div>
     </Cell>

@@ -19,7 +19,7 @@ export default function DiamondCursor({ x, y }: Props) {
       style={{
         position: "fixed",
         pointerEvents: "none",
-        zIndex: 80,
+        zIndex: 100,
         left: x - 10,
         top: y - 10,
         opacity: x > -500 ? 1 : 0,
