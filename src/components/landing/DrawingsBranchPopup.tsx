@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Props = {
@@ -15,6 +15,7 @@ type Props = {
  */
 export default function DrawingsBranchPopup({ open, onClose }: Props) {
   const router = useRouter();
+  const [transitioning, setTransitioning] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -28,8 +29,10 @@ export default function DrawingsBranchPopup({ open, onClose }: Props) {
   if (!open) return null;
 
   const go = (path: string) => {
-    onClose();
-    router.push(path);
+    setTransitioning(true);
+    setTimeout(() => {
+      router.push(path);
+    }, 350);
   };
 
   return (
@@ -41,11 +44,24 @@ export default function DrawingsBranchPopup({ open, onClose }: Props) {
           inset: 0,
           background: "rgba(10,10,10,0.55)",
           zIndex: 60,
-          animation: "overlayIn .15s ease both",
+          animation: transitioning ? "none" : "overlayIn .15s ease both",
           cursor: "none",
+          opacity: transitioning ? 0 : 1,
+          transition: "opacity .28s ease",
         }}
       />
-
+      {transitioning && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "var(--paper)",
+            zIndex: 70,
+            animation: "slideInFromRight .35s cubic-bezier(.6,.0,.2,1) forwards",
+            pointerEvents: "none",
+          }}
+        />
+      )}
       {/* Giant ghost 그림 behind */}
       <div
         style={{
@@ -56,8 +72,10 @@ export default function DrawingsBranchPopup({ open, onClose }: Props) {
           alignItems: "center",
           justifyContent: "center",
           pointerEvents: "none",
-        }}
-      >
+          opacity: transitioning ? 0 : 1,
+          transition: "opacity .28s ease",
+          }}
+        >
         <div
           className="font-display"
           style={{
@@ -85,7 +103,9 @@ export default function DrawingsBranchPopup({ open, onClose }: Props) {
           background: "var(--paper)",
           border: "1.5px solid var(--ink)",
           boxShadow: "12px 14px 0 var(--ink)",
-          animation: "paletteIn .2s cubic-bezier(.2,.7,.3,1) both",
+          animation: transitioning ? "none" : "paletteIn .2s cubic-bezier(.2,.7,.3,1) both",
+          opacity: transitioning ? 0 : 1,
+          transition: "opacity .28s ease, transform .28s ease",
         }}
       >
         {/* Header band */}
@@ -109,10 +129,10 @@ export default function DrawingsBranchPopup({ open, onClose }: Props) {
 
         <div style={{ padding: "20px 18px 14px" }}>
           <div className="font-display" style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.02em", lineHeight: 1 }}>
-            어디로 갈까요?
+            📓
           </div>
           <div className="font-mono" style={{ fontSize: 10, letterSpacing: "0.22em", opacity: 0.6, marginTop: 6 }}>
-            이 카테고리는 두 갈래로 나뉩니다.
+            원하는 cell을 클릭시, 해당 페이지로 이동합니다.
           </div>
         </div>
 
@@ -168,7 +188,7 @@ export default function DrawingsBranchPopup({ open, onClose }: Props) {
               className="font-display"
               style={{ fontSize: 18, fontWeight: 900, lineHeight: 1, letterSpacing: "-0.02em" }}
             >
-              포트폴리오
+              그림
             </div>
             <div className="font-mono" style={{ fontSize: 10, letterSpacing: "0.18em", opacity: 0.75, marginTop: 3 }}>
               PORTFOLIO · 142 PIECES · 정식 작업물
@@ -214,7 +234,7 @@ export default function DrawingsBranchPopup({ open, onClose }: Props) {
               className="font-display"
               style={{ fontSize: 18, fontWeight: 900, lineHeight: 1, letterSpacing: "-0.02em", color: "var(--paper)" }}
             >
-              OC 목록
+              OC
             </div>
             <div className="font-mono" style={{ fontSize: 10, letterSpacing: "0.18em", opacity: 0.75, marginTop: 3 }}>
               ORIGINAL CHARACTERS · 03 ACTIVE · 창작 도감
