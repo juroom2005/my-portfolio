@@ -31,6 +31,12 @@ export default function DrawingsPage() {
   const [sort, setSort] = useState<Sort>("date");
   const [hover, setHover] = useState<Drawing | null>(null);
   const [open, setOpen] = useState<Drawing | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
+
+  const goBack = () => {
+    setTransitioning(true);
+    setTimeout(() => router.push("/"), 200);
+  };
 
   const leaveTimer = useRef<number | null>(null);
 
@@ -309,7 +315,7 @@ export default function DrawingsPage() {
         </div>
         <button
           type="button"
-          onClick={() => router.push("/")}
+          onClick={goBack}
           className="font-mono"
           style={{
             border: "1px solid var(--ink)",
@@ -601,6 +607,18 @@ export default function DrawingsPage() {
             const i = filtered.findIndex((d) => d.id === open.id);
             const next = dir > 0 ? (i + 1) % filtered.length : (i - 1 + filtered.length) % filtered.length;
             setOpen(filtered[next]);
+          }}
+        />
+      )}
+      {transitioning && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "var(--paper)",
+            zIndex: 80,
+            animation: "slideInFromLeft .2s cubic-bezier(.6,.0,.2,1) forwards",
+            pointerEvents: "none",
           }}
         />
       )}

@@ -82,6 +82,7 @@ body {
   font-family: var(--font-sans);
 }
 
+
 /* Shared keyframes used across landing components */
 @keyframes pulseDot {
   0%, 100% { opacity: 0.3; transform: scale(1); }
@@ -106,4 +107,21 @@ body {
 @keyframes slideInFromRight {
   from { transform: translateX(100%); }
   to   { transform: translateX(0); }
+}
+
+@keyframes slideInFromLeft {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes crtFlicker {
+  0%, 100% { opacity: 0; }
+  3%, 5%   { opacity: 0.04; }
+  10%      { opacity: 0; }
+  47%, 49% { opacity: 0.03; }
+}
+
+@keyframes crtScan {
+  from { top: -20%; }
+  to   { top: 120%; }
 }
