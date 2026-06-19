@@ -1,0 +1,50 @@
+/* src/components/code/arcade.css
+ * '코드' 게임 런처 전용 키프레임 + 약간의 반응형. CodeArcadePage 에서 import 한다.
+ * (globals.css 의 crtFlicker/crtScan 와 이름이 겹치지 않도록 arc* 접두사 사용) */
+
+@keyframes arcBlink { 50% { opacity: 0; } }
+@keyframes arcFlicker {
+  0%, 100% { opacity: 0.05; }
+  8%  { opacity: 0.10; }
+  16% { opacity: 0.03; }
+  42% { opacity: 0.08; }
+  70% { opacity: 0.05; }
+  92% { opacity: 0.11; }
+}
+@keyframes arcScan { 0% { transform: translateY(-20%); } 100% { transform: translateY(120%); } }
+@keyframes arcRow { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+@keyframes arcSnake { 0% { transform: translateX(0); } 100% { transform: translateX(36px); } }
+@keyframes arcFall { 0% { transform: translateY(-14px); } 100% { transform: translateY(46px); } }
+@keyframes arcBall {
+  0% { top: 18%; left: 24%; } 25% { top: 70%; left: 70%; } 50% { top: 40%; left: 30%; }
+  75% { top: 78%; left: 64%; } 100% { top: 18%; left: 24%; }
+}
+@keyframes arcShip { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-6px) rotate(4deg); } }
+@keyframes arcBullet { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-40px); opacity: 0; } }
+@keyframes arcWord { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+@keyframes arcMaze { 0% { offset-distance: 0%; } 100% { offset-distance: 100%; } }
+
+/* detail panel power-on */
+@keyframes arcOn {
+  0%  { transform: scaleY(0.005); opacity: 0; filter: brightness(4); }
+  9%  { opacity: 1; }
+  46% { transform: scaleY(0.02); filter: brightness(2.4); }
+  100%{ transform: scaleY(1); opacity: 1; filter: brightness(1); }
+}
+@keyframes arcOnFade { 0%, 46% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes arcOnSweep { 0% { opacity: 0; } 10% { opacity: 0.9; } 60% { opacity: 0.5; } 100% { opacity: 0; } }
+
+/* reduced motion — show end state, skip entrance/idle motion */
+@media (prefers-reduced-motion: reduce) {
+  .code-arcade [style*="arcRow"],
+  .code-arcade [style*="arcOn"] { animation: none !important; opacity: 1 !important; transform: none !important; }
+}
+
+/* responsive: listing scrolls horizontally on narrow screens, detail stacks */
+.code-list { overflow-x: auto; }
+.code-list-row, .code-list-head { min-width: 560px; }
+
+@media (max-width: 720px) {
+  .code-detail-grid { grid-template-columns: 1fr !important; }
+  .code-detail-panel { width: 92vw !important; }
+}

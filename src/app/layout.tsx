@@ -35,6 +35,13 @@ export default function RootLayout({
       lang="ko"
       className={`${archivo.variable} ${jetbrains.variable} ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <link rel="preconnect" href="https://fonts.googleapis.com" precedence="default" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" precedence="default" />
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Noto+Serif+KR:wght@400;500;600;700;900&display=swap"
+        precedence="default"
+      />
       <body className="min-h-full flex flex-col bg-paper text-ink">
         {children}
       </body>
