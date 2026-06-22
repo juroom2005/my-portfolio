@@ -111,6 +111,7 @@ export default function IDCard() {
                 src={PROFILE.avatarUrl}
                 alt={PROFILE.nickname}
                 fill
+                sizes="44px"
                 style={{ objectFit: "cover" }}
               />
             ) : (

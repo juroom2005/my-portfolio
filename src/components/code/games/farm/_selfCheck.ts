@@ -46,8 +46,8 @@ export function runFarmSelfCheck(): void {
     "chosen color phenotype must match");
 
   // 2. Determinism
-  const motherP = asParent(mom, "mom-1");
-  const fatherP = asParent(dad, "dad-1");
+  const motherP = { ...asParent(mom, "mom-1"), fertility: 100 };
+  const fatherP = { ...asParent(dad, "dad-1"), fertility: 100 };
   const seed = deriveSeed("breed", "mom-1", "dad-1", "visit-001");
   const r1 = breed(rabbit, { mother: motherP, father: fatherP, inbreedingF: 0, seed });
   const r2 = breed(rabbit, { mother: motherP, father: fatherP, inbreedingF: 0, seed });
@@ -75,8 +75,8 @@ export function runFarmSelfCheck(): void {
     beauty: 70, stamina: 70, temperament: 70, health: 70, fertility: 70,
     rare_genes: {}, species: "rabbit",
   });
-  console.log("5. Grade for 70x5 stats:", grade70, "(expect A)");
-  assert(grade70 === "A", "70x5 should produce grade A");
+  console.log("5. Grade for 70x5 stats:", grade70, "(expect B — A starts at 72)");
+  assert(grade70 === "B", "70x5 should produce grade B");
 
   const grade20Weak = calcGrade({
     beauty: 90, stamina: 90, temperament: 90, health: 90, fertility: 20,

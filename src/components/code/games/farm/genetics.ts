@@ -7,7 +7,9 @@
 //   makeVisitorBuck  — 손님이 데려오는 방문 수컷
 //   breed            — 부모 둘 → BreedResult (임신 실패 or 새끼 N마리)
 //
-// 게임 디자인 상수는 파일 상단에 모아둠. 밸런싱 시 여기만 만지면 됨.
+// traits (5번째 계층) 인프라는 들어왔으나 effects 적용은 아직 비활성.
+// TRAIT_REGISTRY 가 비어있어서 collectActiveEffects 는 항상 빈 배열 반환.
+// 다음 단계에서 reproductive 카테고리부터 채우고 effects 로직 활성화.
 
 import { Rng } from "./rng";
 import {
@@ -17,24 +19,18 @@ import {
   type Genotype,
   type GeneTrait,
   type RareGeneSpec,
+  TRAIT_REGISTRY,
+  collectActiveEffects,
+  computeIsSterile,
 } from "./species";
 
 // ── 게임 디자인 상수 ────────────────────────────────────────────────────
-/** 변이율 — 한 대립유전자가 다른 무작위 대립유전자로 바뀔 확률 */
 const MUTATION_RATE = 0.03;
-/** 능력치 노이즈 표준편차 (가우시안). 잭팟·바닥 빈도에 직접 영향. */
 const STAT_NOISE = 8;
-/** 근친 페널티 — 능력치에서 빼는 양: F × 이 값 */
 const INBREEDING_STAT_PENALTY = 15;
-/** 근친 페널티 — 임신 확률에 곱: 1 - F × 이 값 */
 const INBREEDING_FERTILITY_PENALTY = 0.6;
 
 // ── 데이터 타입 ─────────────────────────────────────────────────────────
-
-/**
- * 새로 만들어지는 동물 데이터. DB insert 직전의 모양.
- * id, save_id, born_on_day, status 등은 호출 측에서 채움.
- */
 export type NewAnimalData = {
   species: string;
   sex: "F" | "M";
@@ -43,6 +39,8 @@ export type NewAnimalData = {
   father_id: string | null;
   genes: Record<string, Genotype>;
   rare_genes: Record<string, Genotype>;
+  traits: Record<string, Genotype>;
+  is_sterile: boolean;
   beauty: number;
   stamina: number;
   temperament: number;
@@ -50,10 +48,6 @@ export type NewAnimalData = {
   fertility: number;
 };
 
-/**
- * 교배 입력으로 필요한 부모 정보. AnimalRow 의 부분집합.
- * 게임 로직에서 부모를 들고 다닐 때 이 타입으로 캐스팅.
- */
 export type ParentAnimal = {
   id: string;
   species: string;
@@ -63,6 +57,8 @@ export type ParentAnimal = {
   father_id: string | null;
   genes: Record<string, Genotype>;
   rare_genes: Record<string, Genotype>;
+  traits: Record<string, Genotype>;
+  is_sterile: boolean;
   beauty: number;
   stamina: number;
   temperament: number;
@@ -73,29 +69,20 @@ export type ParentAnimal = {
 export type BreedInput = {
   mother: ParentAnimal;
   father: ParentAnimal;
-  /** pedigree.ts 의 inbreedingCoefficient() 결과 (0~1). */
   inbreedingF: number;
-  /** 결정성 시드. deriveSeed("breed", motherId, fatherId, visitId) 권장. */
   seed: number | string;
 };
 
 export type BreedResult =
-  | { pregnancy: false }
+  | { pregnancy: false; reason?: string }
   | { pregnancy: true; offspring: NewAnimalData[] };
 
 export type StarterChoices = {
-  /** 형질 ID → 원하는 표현형 라벨. 예: { color: "검정", eye: "회색" } */
   phenotypes?: Record<string, string>;
 };
 
 // ── 1세대 시작 동물 ─────────────────────────────────────────────────────
 
-/**
- * 시작 동물 생성. parents 없음, generation=1.
- * choices.phenotypes 로 형질을 지정하면 그 표현형이 발현되는 동형접합으로 만듦.
- * 안 지정한 형질은 무작위 알렐 두 개.
- * 희귀 유전자는 starter_carrier_chance 에 따라 보인자 부여.
- */
 export function makeStarter(
   species: Species,
   sex: "F" | "M",
@@ -125,6 +112,11 @@ export function makeStarter(
       : [normal, normal];
   }
 
+  // traits: 인프라만. 시작 동물엔 기본 특성 없음.
+  // 향후 species 매니페스트에 starter_traits 같은 화이트리스트 추가 가능.
+  const traits: Record<string, Genotype> = {};
+  const is_sterile = computeIsSterile(collectActiveEffects(traits, TRAIT_REGISTRY));
+
   const { min, max } = species.starter_stat_range;
   const statRoll = () => Math.round(rng.range(min, max));
 
@@ -136,6 +128,8 @@ export function makeStarter(
     father_id: null,
     genes,
     rare_genes,
+    traits,
+    is_sterile,
     beauty: statRoll(),
     stamina: statRoll(),
     temperament: statRoll(),
@@ -144,10 +138,6 @@ export function makeStarter(
   };
 }
 
-/**
- * 방문 수컷 — makeStarter 의 얇은 래퍼.
- * 농장 명성(fame)이 높으면 평균 능력치가 살짝 올라가도록 보정.
- */
 export function makeVisitorBuck(
   species: Species,
   rng: Rng,
@@ -169,29 +159,46 @@ export function makeVisitorBuck(
 // ── 교배 ────────────────────────────────────────────────────────────────
 
 export function breed(species: Species, input: BreedInput): BreedResult {
-  // 호환성
   if (input.mother.species !== species.id || input.father.species !== species.id) {
-    return { pregnancy: false };
+    return { pregnancy: false, reason: "species mismatch" };
   }
   if (input.mother.sex !== "F" || input.father.sex !== "M") {
-    return { pregnancy: false };
+    return { pregnancy: false, reason: "sex mismatch" };
+  }
+
+  // 특성 — sterile 확인 (캐시된 플래그 우선, 없으면 effects 재계산)
+  if (input.mother.is_sterile || input.father.is_sterile) {
+    return { pregnancy: false, reason: "sterile parent" };
   }
 
   const rng = new Rng(input.seed);
 
+  // 특성 효과 수집 (현재 registry 비어있으면 빈 배열)
+  const motherEffects = collectActiveEffects(input.mother.traits, TRAIT_REGISTRY);
+  const fatherEffects = collectActiveEffects(input.father.traits, TRAIT_REGISTRY);
+  const allEffects = [...motherEffects, ...fatherEffects];
+
   // 임신 성공 판정
   const fertilityFactor = (input.mother.fertility + input.father.fertility) / 200;
   const inbreedingFactor = 1 - input.inbreedingF * INBREEDING_FERTILITY_PENALTY;
-  const pSuccess = species.base_fertility * fertilityFactor * inbreedingFactor;
+  let pSuccess = species.base_fertility * fertilityFactor * inbreedingFactor;
 
-  if (!rng.roll(pSuccess)) {
-    return { pregnancy: false };
+  // 특성 fertility_mult 효과 누적 적용
+  for (const eff of allEffects) {
+    if (eff.type === "fertility_mult") pSuccess *= eff.value;
   }
 
-  // 산자수
-  const litterCount = rng.intRange(species.litter_min, species.litter_max);
+  if (!rng.roll(Math.min(1, Math.max(0, pSuccess)))) {
+    return { pregnancy: false, reason: "roll failed" };
+  }
 
-  // 새끼 생성
+  // 산자수 — base + 특성 litter_bonus 누적
+  let litterCount = rng.intRange(species.litter_min, species.litter_max);
+  for (const eff of allEffects) {
+    if (eff.type === "litter_bonus") litterCount += eff.value;
+  }
+  litterCount = Math.max(1, litterCount);
+
   const offspring: NewAnimalData[] = [];
   for (let i = 0; i < litterCount; i++) {
     offspring.push(makeOffspring(species, input, rng));
@@ -210,7 +217,7 @@ function makeOffspring(species: Species, input: BreedInput, rng: Rng): NewAnimal
     genes[trait.id] = [maybeMutate(m, pool, rng), maybeMutate(f, pool, rng)];
   }
 
-  // 희귀 유전자 (부모가 안 가진 경우 [normal, normal] 가정)
+  // 희귀 유전자
   const rare_genes: Record<string, Genotype> = {};
   for (const rare of species.rare_genes) {
     const normal = findNormalAllele(rare);
@@ -223,10 +230,62 @@ function makeOffspring(species: Species, input: BreedInput, rng: Rng): NewAnimal
     rare_genes[rare.id] = [maybeMutate(m, pool, rng), maybeMutate(f, pool, rng)];
   }
 
-  // 능력치 (mid-parent + 가우시안 - 근친 페널티)
+  // 특성 — 부모가 가진 trait들을 각각 멘델 방식으로 상속
+  // (TRAIT_REGISTRY에 등록된 것 + 부모 traits 둘 다 순회)
+  const traits: Record<string, Genotype> = {};
+  const allTraitIds = new Set([
+    ...Object.keys(input.mother.traits),
+    ...Object.keys(input.father.traits),
+  ]);
+  for (const traitId of allTraitIds) {
+    const spec = TRAIT_REGISTRY[traitId];
+    if (!spec) continue;
+    if (spec.inheritance.kind === "fixed") continue; // fixed는 종 매니페스트가 처리, 유전 무관
+
+    const motherGeno = input.mother.traits[traitId];
+    const fatherGeno = input.father.traits[traitId];
+    if (!motherGeno && !fatherGeno) continue;
+
+    // 알렐 풀
+    const pool = spec.inheritance.alleles.map((a) => a.code);
+
+    // 부모가 안 가진 trait는 정상 알렐 추정 (현재는 알 수 없으니 skip)
+    if (!motherGeno || !fatherGeno) continue;
+
+    const m = inheritAllele(motherGeno, rng);
+    const f = inheritAllele(fatherGeno, rng);
+    traits[traitId] = [maybeMutate(m, pool, rng), maybeMutate(f, pool, rng)];
+  }
+
+  // 변이로 새 trait 등장 — registry 의 모든 trait 에 대해 mutation_chance 검사
+  for (const spec of Object.values(TRAIT_REGISTRY)) {
+    if (spec.inheritance.kind === "fixed") continue;
+    if (traits[spec.id]) continue; // 이미 상속됐으면 skip
+    const chance = spec.mutation_chance ?? 0;
+    if (chance > 0 && rng.roll(chance)) {
+      const pool = spec.inheritance.alleles.map((a) => a.code);
+      traits[spec.id] = [rng.pick(pool), rng.pick(pool)];
+    }
+  }
+
+  // is_sterile 캐시 계산
+  const is_sterile = computeIsSterile(collectActiveEffects(traits, TRAIT_REGISTRY));
+
+  // 능력치
   const penalty = input.inbreedingF * INBREEDING_STAT_PENALTY;
-  const stat = (mv: number, fv: number) => {
-    const raw = (mv + fv) / 2 + rng.gauss(0, STAT_NOISE) - penalty;
+  const motherEffects = collectActiveEffects(input.mother.traits, TRAIT_REGISTRY);
+  const fatherEffects = collectActiveEffects(input.father.traits, TRAIT_REGISTRY);
+  const allEffects = [...motherEffects, ...fatherEffects];
+  const statBonus = (statName: string): number => {
+    let total = 0;
+    for (const eff of allEffects) {
+      if (eff.type === "stat_bonus" && eff.stat === statName) total += eff.value;
+    }
+    return total;
+  };
+
+  const stat = (statName: "beauty" | "stamina" | "temperament" | "health" | "fertility", mv: number, fv: number) => {
+    const raw = (mv + fv) / 2 + rng.gauss(0, STAT_NOISE) - penalty + statBonus(statName);
     return Math.max(0, Math.min(100, Math.round(raw)));
   };
 
@@ -241,11 +300,13 @@ function makeOffspring(species: Species, input: BreedInput, rng: Rng): NewAnimal
     father_id: input.father.id,
     genes,
     rare_genes,
-    beauty: stat(input.mother.beauty, input.father.beauty),
-    stamina: stat(input.mother.stamina, input.father.stamina),
-    temperament: stat(input.mother.temperament, input.father.temperament),
-    health: stat(input.mother.health, input.father.health),
-    fertility: stat(input.mother.fertility, input.father.fertility),
+    traits,
+    is_sterile,
+    beauty: stat("beauty", input.mother.beauty, input.father.beauty),
+    stamina: stat("stamina", input.mother.stamina, input.father.stamina),
+    temperament: stat("temperament", input.mother.temperament, input.father.temperament),
+    health: stat("health", input.mother.health, input.father.health),
+    fertility: stat("fertility", input.mother.fertility, input.father.fertility),
   };
 }
 
@@ -261,7 +322,6 @@ function maybeMutate(allele: Allele, pool: readonly Allele[], rng: Rng): Allele 
 }
 
 function findAlleleForPhenotype(trait: GeneTrait, phenotype: string): Allele {
-  // 동형접합을 시도해 표현형이 일치하는 첫 알렐 반환
   for (const allele of trait.alleles) {
     if (trait.expression([allele.code, allele.code]) === phenotype) {
       return allele.code;
@@ -282,5 +342,4 @@ function findRareAllele(rare: RareGeneSpec): Allele {
   return rec.code;
 }
 
-// 종 추가 시 import 안 깨지게 default export 한 번 더
 export { getSpecies };

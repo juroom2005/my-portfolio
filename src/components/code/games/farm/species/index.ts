@@ -1,5 +1,5 @@
-// src/components/farm/species/index.ts
-// 종 레지스트리. 새 종 추가는 여기서 단 두 줄.
+// src/components/code/games/farm/species/index.ts
+// 종 + 특성 레지스트리. 새 종/특성 추가는 여기에 한 줄.
 
 import { RABBIT } from "./rabbit";
 import { SHEEP } from "./sheep";
@@ -20,3 +20,4 @@ export function getSpecies(id: string): Species {
 }
 
 export * from "./types";
+export * from "./traits";
