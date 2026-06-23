@@ -1,16 +1,17 @@
 // src/components/code/games/farm/species/traits.ts
 //
-// 특성(Trait) — 5번째 유전 계층. 외형/능력치가 아닌 "행동·게임 룰"을 결정.
-// 예: 다산, 불임, 빠른 회복, 장수, 사교적 등.
-//
-// 새 특성 추가 = 이 파일에 TraitSpec 하나 추가 + TRAIT_REGISTRY 등록.
-// 게임 코드는 동물의 traits 안에서 활성 특성을 읽고 effects 를 적용.
+// 5번째 유전 계층 — 특성(Trait).
+// 등급별 슬롯이 있어 발현된 특성이 다 활성화되진 않음.
+// 슬롯 초과분은 잠재 상태로 traits 데이터에만 보존, 등급 오르면 깨어남.
 
 import type { Allele, Genotype, AlleleSpec } from "./types";
+import { Rng } from "../rng";
+import type { Grade } from "../dbTypes";
 
 // ── 카테고리 ────────────────────────────────────────────────────────────
 export const TRAIT_CATEGORIES = {
   reproductive: "생식",
+  economic: "경제",
   physical: "신체",
   behavioral: "기질",
   rare: "특수",
@@ -19,11 +20,6 @@ export const TRAIT_CATEGORIES = {
 export type TraitCategory = keyof typeof TRAIT_CATEGORIES;
 
 // ── 유전 모델 ───────────────────────────────────────────────────────────
-//
-// 'dominant'   — 우성 알렐 하나만 있어도 발현 (예: 다산)
-// 'recessive'  — 동형 열성일 때만 발현 (예: 알비노형 약점)
-// 'codominant' — 두 알렐 모두 발현 (혼합 효과)
-// 'fixed'      — 종 자체가 강제로 부여 (예: hybrid 의 sterile). 유전 무관.
 export type TraitInheritance =
   | { kind: "dominant"; alleles: AlleleSpec[] }
   | { kind: "recessive"; alleles: AlleleSpec[] }
@@ -31,17 +27,19 @@ export type TraitInheritance =
   | { kind: "fixed" };
 
 // ── 게임 룰 효과 ────────────────────────────────────────────────────────
-//
-// 게임 코드(breed, 손님 방문 로직 등)가 동물의 활성 특성을 읽고
-// 여기 정의된 effect 들을 적용. 새 효과 종류 추가는 union 에 한 줄 + 게임 로직.
 export type TraitEffect =
-  | { type: "fertility_mult"; value: number }   // 임신 확률 × N
-  | { type: "litter_bonus"; value: number }     // 산자수 ±N
-  | { type: "sterile" }                          // 임신 불가 (단일 효과)
-  | { type: "gestation_mult"; value: number }   // 임신 기간 × N
-  | { type: "maturity_mult"; value: number }    // 성장 기간 × N
+  | { type: "fertility_mult"; value: number }
+  | { type: "litter_bonus"; value: number }
+  | { type: "sterile" }
+  | { type: "gestation_mult"; value: number }
+  | { type: "maturity_mult"; value: number }
   | { type: "lifespan_mult"; value: number }
-  | { type: "stat_bonus"; stat: "beauty" | "stamina" | "temperament" | "health" | "fertility"; value: number };
+  | { type: "stat_bonus"; stat: "beauty" | "stamina" | "temperament" | "health" | "fertility"; value: number }
+  | { type: "daily_income"; value: number }
+  | { type: "visit_freq_mult"; value: number }
+  | { type: "tip_chance"; value: number }
+  | { type: "gift_chance"; value: number }
+  | { type: "sick_chance"; value: number };
 
 // ── TraitSpec ───────────────────────────────────────────────────────────
 export type TraitSpec = {
@@ -49,55 +47,36 @@ export type TraitSpec = {
   label_ko: string;
   label_en: string;
   category: TraitCategory;
-
   inheritance: TraitInheritance;
-
   effects: TraitEffect[];
-
-  // 같이 가질 수 없는 특성 ID 목록 (예: 다산 ↔ 약한생식 상호배제)
   conflict_with?: string[];
-
-  // UI 표기 보조
-  rarity_label?: string;  // 'COMMON' | 'RARE' | 'UNIQUE'
+  rarity_label?: "COMMON" | "UNCOMMON" | "RARE" | "LEGENDARY" | "PENALTY";
   description?: string;
 
-  // 변이로 등장할 확률 (0~1). 부모에게 없을 때 새끼에게 생길 확률.
+  /** 시작 동물에 이형접합으로 부여될 확률 (우성은 발현, 열성은 보인자) */
+  starter_carrier_chance?: number;
+  /** 부모에게 없을 때 새끼에 새로 등장할 확률 (변이) */
   mutation_chance?: number;
 };
 
-// ── 동물이 들고 있는 특성 데이터 형태 ───────────────────────────────────
-// DB animals.traits 컬럼에 이 모양으로 저장.
-//   { "prolific": ["P", "p"], "sterile": ["S", "S"] }
 export type TraitGenotypes = Record<string, Genotype>;
 
-// 'fixed' 특성은 알렐 없이 발현 상태만 표현 — 빈 배열로 통일하거나
-// 따로 키 형식을 두어도 됨. 단순화를 위해 빈 배열 [['', '']] 로 표현하고
-// 코드 측에서 inheritance kind 로 분기.
-
 // ── 표현형 판정 ─────────────────────────────────────────────────────────
-//
-// 동물이 이 특성을 "발현" 하고 있는가? (보인자는 false, 발현만 true)
 export function isTraitExpressed(spec: TraitSpec, genotype: Genotype | undefined): boolean {
-  if (spec.inheritance.kind === "fixed") {
-    // fixed 특성은 traits 객체에 키가 존재하면 발현된 걸로 간주
-    return genotype !== undefined;
-  }
+  if (spec.inheritance.kind === "fixed") return genotype !== undefined;
   if (!genotype) return false;
   const [a, b] = genotype;
 
   switch (spec.inheritance.kind) {
     case "dominant": {
-      // 우성 알렐(dominant: true) 하나라도 있으면 발현
       const dom = spec.inheritance.alleles.find((al) => al.dominant)?.code;
       return a === dom || b === dom;
     }
     case "recessive": {
-      // 열성 알렐(dominant: false) 가 동형접합일 때만 발현
       const rec = spec.inheritance.alleles.find((al) => !al.dominant)?.code;
       return a === rec && b === rec;
     }
     case "codominant": {
-      // 두 알렐이 모두 dominant=true 컬렉션 내에 있고, 서로 다르면 혼합 발현으로 간주
       return spec.inheritance.alleles.some((al) => al.code === a)
         && spec.inheritance.alleles.some((al) => al.code === b)
         && a !== b;
@@ -105,47 +84,297 @@ export function isTraitExpressed(spec: TraitSpec, genotype: Genotype | undefined
   }
 }
 
-// 보인자(carrier) 여부 — 열성 특성에만 의미 있음
 export function isTraitCarrier(spec: TraitSpec, genotype: Genotype | undefined): boolean {
   if (spec.inheritance.kind !== "recessive") return false;
   if (!genotype) return false;
   const rec = spec.inheritance.alleles.find((al) => !al.dominant)?.code;
   const [a, b] = genotype;
-  return (a === rec) !== (b === rec); // XOR — 하나만 열성
+  return (a === rec) !== (b === rec);
 }
 
 // ── 활성 효과 수집 ──────────────────────────────────────────────────────
-//
-// 동물의 traits 데이터에서 "현재 발현 중인" 특성들의 effects 를 모아서 반환.
-// breed/visit 로직이 이 결과를 가지고 룰 적용.
+// 이제 active_traits 배열만 봄. 잠재(슬롯 초과로 비활성)는 효과 없음.
 export function collectActiveEffects(
-  traits: TraitGenotypes,
+  activeTraitIds: string[],
   registry: Record<string, TraitSpec>,
 ): TraitEffect[] {
   const effects: TraitEffect[] = [];
-  for (const [traitId, genotype] of Object.entries(traits)) {
-    const spec = registry[traitId];
+  for (const id of activeTraitIds) {
+    const spec = registry[id];
     if (!spec) continue;
-    if (isTraitExpressed(spec, genotype)) {
-      effects.push(...spec.effects);
-    }
+    effects.push(...spec.effects);
   }
   return effects;
 }
 
-// 발현된 sterile 효과가 하나라도 있으면 true — is_sterile 컬럼 캐시용
-export function computeIsSterile(effects: TraitEffect[]): boolean {
-  return effects.some((e) => e.type === "sterile");
+export function computeIsSterile(activeTraitIds: string[]): boolean {
+  return activeTraitIds.includes("sterile");
+}
+
+// ── 등급별 슬롯 ─────────────────────────────────────────────────────────
+const GRADE_SLOTS: Record<Grade, number> = {
+  F: 0, E: 0, D: 0,
+  C: 1, B: 1,
+  A: 2, S: 2,
+  "S+": 3,
+};
+
+export function traitSlots(grade: Grade): number {
+  return GRADE_SLOTS[grade] ?? 0;
+}
+
+/** 시작 동물 슬롯 캡 — 등급과 무관 */
+export const STARTER_TRAIT_CAP = 2;
+
+// ── 활성 특성 결정 ──────────────────────────────────────────────────────
+// 발현된 특성 중 슬롯 수만큼 무작위 활성. 슬롯 초과분은 잠재.
+// rng 그대로 사용 — 호출 측 시드에 의존.
+export function computeActiveTraits(
+  traits: TraitGenotypes,
+  grade: Grade,
+  rng: Rng,
+  options: { isStarter?: boolean } = {},
+): string[] {
+  const expressed: string[] = [];
+  for (const [id, geno] of Object.entries(traits)) {
+    const spec = TRAIT_REGISTRY[id];
+    if (!spec) continue;
+    if (isTraitExpressed(spec, geno)) expressed.push(id);
+  }
+
+  let maxSlots = traitSlots(grade);
+  if (options.isStarter) maxSlots = Math.min(STARTER_TRAIT_CAP, maxSlots);
+
+  if (expressed.length <= maxSlots) return expressed.sort();
+
+  // Fisher-Yates 셔플 후 슬롯만큼 선택
+  const shuffled = [...expressed];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, maxSlots).sort();
 }
 
 // ── 글로벌 레지스트리 ───────────────────────────────────────────────────
-//
-// 모든 특성은 여기 등록. 종에 종속되지 않은 공용 레지스트리.
-// 종마다 "이 특성 사용 가능" 화이트리스트를 species 매니페스트에서 가질 수도 있음.
-// 지금은 비어 있고, 다음 단계에서 reproductive 카테고리부터 채울 예정.
 export const TRAIT_REGISTRY: Record<string, TraitSpec> = {};
 
-// 헬퍼 — 특성 등록
 export function registerTrait(spec: TraitSpec): void {
   TRAIT_REGISTRY[spec.id] = spec;
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// 특성 풀 (11개)
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── 생식 ────────────────────────────────────────────────────────────────
+registerTrait({
+  id: "prolific",
+  label_ko: "다산",
+  label_en: "Prolific",
+  category: "reproductive",
+  inheritance: {
+    kind: "dominant",
+    alleles: [
+      { code: "P", label_ko: "다산", dominant: true },
+      { code: "p", label_ko: "보통", dominant: false },
+    ],
+  },
+  effects: [{ type: "litter_bonus", value: 1 }],
+  rarity_label: "COMMON",
+  description: "산자수 +1",
+  starter_carrier_chance: 0.15,
+  mutation_chance: 0.01,
+});
+
+registerTrait({
+  id: "subfertile",
+  label_ko: "약한 생식",
+  label_en: "Subfertile",
+  category: "reproductive",
+  inheritance: {
+    kind: "recessive",
+    alleles: [
+      { code: "F", label_ko: "정상", dominant: true },
+      { code: "f", label_ko: "약한 생식", dominant: false },
+    ],
+  },
+  effects: [{ type: "fertility_mult", value: 0.6 }],
+  rarity_label: "COMMON",
+  description: "임신 확률 ×0.6",
+  starter_carrier_chance: 0.15,
+  mutation_chance: 0.005,
+});
+
+registerTrait({
+  id: "sterile",
+  label_ko: "불임",
+  label_en: "Sterile",
+  category: "reproductive",
+  inheritance: {
+    kind: "dominant",
+    alleles: [
+      { code: "X", label_ko: "불임", dominant: true },
+      { code: "x", label_ko: "정상", dominant: false },
+    ],
+  },
+  effects: [{ type: "sterile" }],
+  rarity_label: "PENALTY",
+  description: "임신 불가",
+  starter_carrier_chance: 0,
+  mutation_chance: 0.001,
+});
+
+registerTrait({
+  id: "quick_recovery",
+  label_ko: "빠른 회복",
+  label_en: "Quick Recovery",
+  category: "reproductive",
+  inheritance: {
+    kind: "recessive",
+    alleles: [
+      { code: "Q", label_ko: "정상", dominant: true },
+      { code: "q", label_ko: "빠른 회복", dominant: false },
+    ],
+  },
+  effects: [{ type: "gestation_mult", value: 0.5 }],
+  rarity_label: "UNCOMMON",
+  description: "임신 기간 ×0.5",
+  starter_carrier_chance: 0.1,
+  mutation_chance: 0.005,
+});
+
+// ── 경제 ────────────────────────────────────────────────────────────────
+registerTrait({
+  id: "productive",
+  label_ko: "소득",
+  label_en: "Productive",
+  category: "economic",
+  inheritance: {
+    kind: "dominant",
+    alleles: [
+      { code: "D", label_ko: "소득", dominant: true },
+      { code: "d", label_ko: "보통", dominant: false },
+    ],
+  },
+  effects: [{ type: "daily_income", value: 5 }],
+  rarity_label: "COMMON",
+  description: "매일 자동 수입 +5c",
+  starter_carrier_chance: 0.15,
+  mutation_chance: 0.01,
+});
+
+registerTrait({
+  id: "lucky",
+  label_ko: "행운",
+  label_en: "Lucky",
+  category: "economic",
+  inheritance: {
+    kind: "recessive",
+    alleles: [
+      { code: "K", label_ko: "정상", dominant: true },
+      { code: "k", label_ko: "행운", dominant: false },
+    ],
+  },
+  effects: [{ type: "tip_chance", value: 0.15 }],
+  rarity_label: "RARE",
+  description: "손님 팁 확률 15%",
+  starter_carrier_chance: 0.05,
+  mutation_chance: 0.002,
+});
+
+registerTrait({
+  id: "charming",
+  label_ko: "매력",
+  label_en: "Charming",
+  category: "economic",
+  inheritance: {
+    kind: "dominant",
+    alleles: [
+      { code: "M", label_ko: "매력", dominant: true },
+      { code: "m", label_ko: "보통", dominant: false },
+    ],
+  },
+  effects: [{ type: "visit_freq_mult", value: 1.2 }],
+  rarity_label: "UNCOMMON",
+  description: "같은 종 방문 빈도 +20%",
+  starter_carrier_chance: 0.1,
+  mutation_chance: 0.005,
+});
+
+registerTrait({
+  id: "collector",
+  label_ko: "수집가",
+  label_en: "Collector",
+  category: "economic",
+  inheritance: {
+    kind: "recessive",
+    alleles: [
+      { code: "T", label_ko: "정상", dominant: true },
+      { code: "t", label_ko: "수집가", dominant: false },
+    ],
+  },
+  effects: [{ type: "gift_chance", value: 0.1 }],
+  rarity_label: "RARE",
+  description: "손님이 떠날 때 가끔 선물",
+  starter_carrier_chance: 0.05,
+  mutation_chance: 0.002,
+});
+
+// ── 신체 ────────────────────────────────────────────────────────────────
+registerTrait({
+  id: "long_lived",
+  label_ko: "장수",
+  label_en: "Long-lived",
+  category: "physical",
+  inheritance: {
+    kind: "recessive",
+    alleles: [
+      { code: "G", label_ko: "정상", dominant: true },
+      { code: "g", label_ko: "장수", dominant: false },
+    ],
+  },
+  effects: [{ type: "lifespan_mult", value: 1.5 }],
+  rarity_label: "UNCOMMON",
+  description: "수명 ×1.5",
+  starter_carrier_chance: 0.1,
+  mutation_chance: 0.005,
+});
+
+registerTrait({
+  id: "frail",
+  label_ko: "병약",
+  label_en: "Frail",
+  category: "physical",
+  inheritance: {
+    kind: "dominant",
+    alleles: [
+      { code: "Y", label_ko: "병약", dominant: true },
+      { code: "y", label_ko: "정상", dominant: false },
+    ],
+  },
+  effects: [{ type: "sick_chance", value: 0.1 }],
+  rarity_label: "PENALTY",
+  description: "가끔 아픔 (영업 불가)",
+  starter_carrier_chance: 0,
+  mutation_chance: 0.003,
+});
+
+registerTrait({
+  id: "robust",
+  label_ko: "강건",
+  label_en: "Robust",
+  category: "physical",
+  inheritance: {
+    kind: "dominant",
+    alleles: [
+      { code: "R", label_ko: "강건", dominant: true },
+      { code: "r", label_ko: "보통", dominant: false },
+    ],
+  },
+  effects: [{ type: "stat_bonus", stat: "health", value: 10 }],
+  rarity_label: "COMMON",
+  description: "health +10",
+  starter_carrier_chance: 0.15,
+  mutation_chance: 0.01,
+});

@@ -1,15 +1,10 @@
 // src/components/code/games/farm/grading.ts
 //
-// 등급 / 가격 공식. pure 함수.
-//
-// 등급: 5스탯 기하평균 × (1 + 발현된 희귀유전자 보너스).
-//       곱셈식이라 한 스탯이라도 낮으면 전체가 끌어내려짐.
-//
-// 가격: 50 × species.rarity_tier × grade_mult × (1 + farmLevel × 0.1).
-//       최소 50c 보장.
+// 등급 / 가격 공식 + active_traits 재계산 헬퍼. pure 함수.
 
+import { Rng, deriveSeed } from "./rng";
 import { GRADE_MULT, GRADES, type Grade } from "./dbTypes";
-import { getSpecies, type Genotype } from "./species";
+import { getSpecies, computeActiveTraits, type Genotype } from "./species";
 
 type GradeInput = {
   beauty: number;
@@ -22,7 +17,6 @@ type GradeInput = {
 };
 
 export function calcGrade(animal: GradeInput): Grade {
-  // 0이 들어가면 기하평균이 0이라 등급 F 강제됨. clamp 1 이상으로 안전장치.
   const geom = Math.pow(
     Math.max(1, animal.beauty) *
       Math.max(1, animal.stamina) *
@@ -54,10 +48,6 @@ export function calcGrade(animal: GradeInput): Grade {
   return "F";
 }
 
-/**
- * 손님(수컷)의 방문료. 종 희소성 · 등급 · 농장 명성의 곱.
- * 등급이 null/잘못된 값이면 D로 폴백.
- */
 export function calcVisitFee(
   buck: { species: string; grade: Grade | string | null },
   farmLevel: number,
@@ -69,4 +59,22 @@ export function calcVisitFee(
   const gradeMult = GRADE_MULT[grade];
   const fameMult = 1 + farmLevel * 0.1;
   return Math.max(50, Math.round(base * gradeMult * fameMult));
+}
+
+/**
+ * 동물의 grade 가 바뀐 후 호출. 새 grade 슬롯 수에 맞춰 active_traits 재선택.
+ * 시드는 (동물 id + grade) 로 derive → 같은 동물·같은 등급이면 항상 같은 결과.
+ *
+ * 사용 예: 능력치 변동(아이템·이벤트)으로 새 grade 가 D → C 로 올랐을 때,
+ *   1) 새 grade 를 DB 에 업데이트
+ *   2) recomputeActiveTraits 호출해서 새 active_traits 결정
+ *   3) is_sterile 도 같이 업데이트
+ */
+export function recomputeActiveTraits(animal: {
+  id: string;
+  traits: Record<string, Genotype>;
+  grade: Grade;
+}): string[] {
+  const rng = new Rng(deriveSeed("activetraits", animal.id, animal.grade));
+  return computeActiveTraits(animal.traits, animal.grade, rng);
 }

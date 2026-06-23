@@ -44,8 +44,9 @@ export type AnimalRow = {
   nursery_slot: number | null;
   genes: Record<string, Genotype>;
   rare_genes: Record<string, Genotype>;
-  traits: Record<string, Genotype>;        // ← 신규: 특성 (5번째 유전 계층)
-  is_sterile: boolean;                      // ← 신규: traits에서 파생되는 캐시
+  traits: Record<string, Genotype>;
+  active_traits: string[];           // ← 신규: 등급 슬롯에 따라 활성화된 특성 ID
+  is_sterile: boolean;
   beauty: number;
   stamina: number;
   temperament: number;
@@ -95,7 +96,6 @@ export const TICK_OPEN = 48;
 export const TICK_CLOSE = 108;
 export const TICK_WAKE = 36;
 export const TICK_FORCE_SLEEP = 16;
-
 export const TICK_MS_REAL = 7000;
 
 // ── 등급 ────────────────────────────────────────────────────────────────

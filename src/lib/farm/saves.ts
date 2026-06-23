@@ -1,10 +1,8 @@
 // src/lib/farm/saves.ts
 //
 // 농장 세이브 CRUD 헬퍼 — 서버 사이드 전용 (RLS로 보호).
-// 클라이언트에서 호출 필요 시 server action 으로 wrap 해서 사용.
 
 import { createClient } from "@/lib/supabase/server";
-import { calcGrade } from "@/components/code/games/farm/grading";
 import type { FarmSaveRow } from "@/components/code/games/farm/dbTypes";
 import type { NewAnimalData } from "@/components/code/games/farm/genetics";
 
@@ -17,7 +15,7 @@ export type CreateSaveInput = {
   animal_names?: (string | null)[];
 };
 
-// ── 진입 화면용: 세이브 + 동물 수 ───────────────────────────────────────
+// ── 진입 화면용 ─────────────────────────────────────────────────────────
 export type FarmSaveWithStats = FarmSaveRow & {
   animal_count: number;
 };
@@ -41,11 +39,6 @@ export async function getMySaves(): Promise<FarmSaveRow[]> {
   return data ?? [];
 }
 
-/**
- * 진입 화면용 — 세이브 목록 + 각 세이브의 현재 동물 수.
- * 동물 수는 status='room' 또는 'nursery' 인 것만 카운트 (활성 동물).
- * N+1 회피: animals 한 번에 가져와서 클라이언트에서 매핑.
- */
 export async function getMySavesWithStats(): Promise<FarmSaveWithStats[]> {
   const supabase = await createClient();
 
@@ -93,13 +86,15 @@ export async function getSave(saveId: string): Promise<FarmSaveRow | null> {
 }
 
 // ── 생성 ────────────────────────────────────────────────────────────────
+//
+// NewAnimalData 에 이미 grade·active_traits·is_sterile 다 들어있어서
+// 그대로 payload 에 실어 RPC 호출. createSave 가 부가 계산 하지 않음.
 
 export async function createSave(input: CreateSaveInput): Promise<string> {
   const supabase = await createClient();
 
-  const animalsWithGrade = input.animals.map((a, i) => ({
+  const animalsWithNames = input.animals.map((a, i) => ({
     ...a,
-    grade: calcGrade(a),
     name: input.animal_names?.[i] ?? null,
   }));
 
@@ -107,7 +102,7 @@ export async function createSave(input: CreateSaveInput): Promise<string> {
     character_name: input.character_name,
     character_metadata: input.character_metadata,
     farm_name: input.farm_name,
-    animals: animalsWithGrade,
+    animals: animalsWithNames,
   };
 
   const { data, error } = await supabase.rpc("create_farm_save", {
