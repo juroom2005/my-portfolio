@@ -17,6 +17,15 @@ import {
   type RareGeneInfo,
   type ActiveTraitInfo,
 } from "./phenotype";
+import {
+  formatBreedLabel,
+  getBreedTier,
+  getOrInferAncestry,
+  TIER_COLOR,
+  type BreedTier,
+} from "./ancestry";
+import { getSocialRank } from "./species/humanProfile";
+import { isReadyToGraduate } from "./pricing";
 
 const FARM = {
   cardBg: "#FFF8E0",
@@ -41,8 +50,48 @@ export default function AnimalCard({ animal, currentDay, variant = "compact", on
   const d = useMemo(() => describeAnimal(animal), [animal]);
   const grade = gradeColor(animal.grade);
 
-  if (variant === "room") return <RoomCard animal={animal} d={d} currentDay={currentDay} grade={grade} onClick={onClick} />;
-  return <CompactCard animal={animal} d={d} currentDay={currentDay} grade={grade} onClick={onClick} />;
+  // 혈통 정보 (순종이면 null → 배지 안 그림)
+  const breed = useMemo(() => {
+    const anc = getOrInferAncestry(animal);
+    const tier = getBreedTier(anc, animal.species);
+    if (tier === "pure") return null;
+    return { tier, label: formatBreedLabel(anc, animal.species) };
+  }, [animal]);
+
+  // 사생아 구체 라벨 (metadata.bastard_of 가 있으면 "후작의 사생아" 등으로 override)
+  const bastardOverride = useMemo(() => getBastardOverride(animal), [animal]);
+
+  // active_traits 표시용 — noble_bastard 라벨을 구체 라벨로 교체
+  const displayTraits = useMemo(() => {
+    if (!bastardOverride) return d.activeTraits;
+    return d.activeTraits.map((t) =>
+      t.id === "noble_bastard" ? { ...t, label: bastardOverride } : t,
+    );
+  }, [d.activeTraits, bastardOverride]);
+
+  if (variant === "room") {
+    return (
+      <RoomCard
+        animal={animal}
+        d={d}
+        currentDay={currentDay}
+        grade={grade}
+        breed={breed}
+        onClick={onClick}
+      />
+    );
+  }
+  return (
+    <CompactCard
+      animal={animal}
+      d={d}
+      currentDay={currentDay}
+      grade={grade}
+      breed={breed}
+      displayTraits={displayTraits}
+      onClick={onClick}
+    />
+  );
 }
 
 // ── compact: 보육실 사이드 패널 ─────────────────────────────────────────
@@ -51,42 +100,56 @@ function CompactCard({
   d,
   currentDay,
   grade,
+  breed,
+  displayTraits,
   onClick,
 }: {
   animal: AnimalRow;
   d: AnimalDisplay;
   currentDay: number;
   grade: ReturnType<typeof gradeColor>;
+  breed: { tier: BreedTier; label: string } | null;
+  displayTraits: ActiveTraitInfo[];
   onClick?: () => void;
 }) {
   const age = d.ageInDays(currentDay);
   const toAdult = d.daysToAdult(currentDay);
+
+  // 보육실에서 성체 도달 — 깜빡이는 LED 로 알림
+  const ready = isReadyToGraduate(animal, currentDay);
 
   return (
     <div
       onClick={onClick}
       style={{
         background: FARM.cardBg,
-        border: `1px solid ${FARM.line}`,
+        border: `1px solid ${ready ? "rgba(143,230,0,0.65)" : FARM.line}`,
+        boxShadow: ready ? "0 0 0 1px rgba(143,230,0,0.25)" : "none",
         padding: "10px 12px",
         cursor: onClick ? "pointer" : "default",
         display: "grid",
         gridTemplateColumns: "auto 1fr auto",
         gap: 10,
         alignItems: "center",
-        transition: "transform .15s, border-color .15s",
+        position: "relative",
+        transition: "transform .15s, border-color .15s, box-shadow .25s",
       }}
       onMouseEnter={(e) => {
         if (!onClick) return;
         e.currentTarget.style.transform = "translateY(-1px)";
-        e.currentTarget.style.borderColor = "rgba(61,47,31,0.45)";
+        e.currentTarget.style.borderColor = ready
+          ? "rgba(143,230,0,0.9)"
+          : "rgba(61,47,31,0.45)";
       }}
       onMouseLeave={(e) => {
         if (!onClick) return;
         e.currentTarget.style.transform = "translateY(0)";
-        e.currentTarget.style.borderColor = FARM.line;
+        e.currentTarget.style.borderColor = ready
+          ? "rgba(143,230,0,0.65)"
+          : FARM.line;
       }}
     >
+      {ready && <GraduateBlinker />}
       {/* 아이콘 */}
       <div
         style={{
@@ -130,6 +193,7 @@ function CompactCard({
           >
             {d.sexSymbol}
           </span>
+          {breed && <BreedBadge tier={breed.tier} label={breed.label} size="sm" />}
         </div>
         <div className="font-mono" style={{ fontSize: 10, color: FARM.inkSoft, marginTop: 2 }}>
           {d.speciesLabel} · {d.isAdult ? `성체 D${age}` : `아기 D${age} → 성체까지 ${toAdult}일`}
@@ -143,7 +207,7 @@ function CompactCard({
             .map((r: RareGeneInfo) => (
               <Chip key={r.id} text={r.label} tone="rare" />
             ))}
-          {d.activeTraits.slice(0, 2).map((t: ActiveTraitInfo) => (
+          {displayTraits.slice(0, 2).map((t: ActiveTraitInfo) => (
             <Chip key={t.id} text={t.label} tone={t.tone} />
           ))}
         </div>
@@ -161,12 +225,14 @@ function RoomCard({
   d,
   currentDay,
   grade,
+  breed,
   onClick,
 }: {
   animal: AnimalRow;
   d: AnimalDisplay;
   currentDay: number;
   grade: ReturnType<typeof gradeColor>;
+  breed: { tier: BreedTier; label: string } | null;
   onClick?: () => void;
 }) {
   const age = d.ageInDays(currentDay);
@@ -200,6 +266,11 @@ function RoomCard({
       }}
     >
       <GradeBadge grade={animal.grade} colors={grade} corner />
+      {breed && (
+        <div style={{ position: "absolute", top: 4, left: 4 }}>
+          <BreedBadge tier={breed.tier} label={breed.tier === "ace" ? "에" : breed.tier === "quarter" ? "쿼" : "하"} size="xs" />
+        </div>
+      )}
       <div style={{ fontSize: 40, lineHeight: 1 }} aria-hidden>
         {d.icon}
       </div>
@@ -243,6 +314,56 @@ function Chip({ text, tone = "neutral" }: { text: string; tone?: "neutral" | "go
   );
 }
 
+// ── 성체 도달 알림 (깜빡깜빡) ──────────────────────────────────────────
+//
+// 보육실 카드 우상단의 작은 LED + "성체!" 라벨.
+// 클릭은 카드 전체가 받아서 모달이 열리고 거기서 액션 선택.
+function GraduateBlinker() {
+  return (
+    <>
+      <div
+        style={{
+          position: "absolute",
+          top: 4,
+          left: 4,
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "2px 6px",
+          background: "rgba(143,230,0,0.18)",
+          border: "1px solid rgba(143,230,0,0.55)",
+          borderRadius: 3,
+          fontSize: 9,
+          letterSpacing: "0.1em",
+          fontWeight: 700,
+          color: "#3D5500",
+          animation: "graduateBlink 1.4s ease-in-out infinite",
+          pointerEvents: "none",
+          zIndex: 2,
+        }}
+        className="font-mono"
+      >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: "#8FE600",
+            boxShadow: "0 0 6px rgba(143,230,0,0.85)",
+          }}
+        />
+        성체
+      </div>
+      <style>{`
+        @keyframes graduateBlink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.35; }
+        }
+      `}</style>
+    </>
+  );
+}
+
 // ── GradeBadge ──────────────────────────────────────────────────────────
 function GradeBadge({
   grade,
@@ -276,4 +397,53 @@ function GradeBadge({
       {grade}
     </div>
   );
+}
+
+// ── BreedBadge (혈통 배지) ──────────────────────────────────────────────
+//
+// 작고 절제된 칩. 순종은 호출 측에서 안 그리도록 거름 (여기는 항상 렌더).
+// size:
+//   "sm" — compact 카드 본문 inline 용
+//   "xs" — room 카드 좌상단 코너 용 (한글자만)
+function BreedBadge({ tier, label, size = "sm" }: { tier: BreedTier; label: string; size?: "sm" | "xs" }) {
+  const palette = TIER_COLOR[tier];
+  const compact = size === "xs";
+  return (
+    <span
+      title={label}
+      className="font-mono"
+      style={{
+        background: palette.bg,
+        color: palette.fg,
+        border: `1px solid ${palette.border}`,
+        padding: compact ? "1px 4px" : "1px 6px",
+        fontSize: compact ? 9 : 10,
+        borderRadius: 3,
+        letterSpacing: "0.04em",
+        fontWeight: 700,
+        whiteSpace: "nowrap",
+        lineHeight: 1.3,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+// ── 사생아 라벨 구체화 헬퍼 ─────────────────────────────────────────────
+//
+// 동물 metadata.bastard_of = "marquis" 같은 socialRankId 가 있으면
+// SOCIAL_RANKS 의 bastardLabel ("후작의 사생아") 으로 매핑.
+// 없으면 null → 기본 라벨("귀족의 사생아") 유지.
+function getBastardOverride(animal: AnimalRow): string | null {
+  if (!animal.active_traits.includes("noble_bastard")) return null;
+  const meta = animal.metadata as Record<string, unknown> | null;
+  const rankId = meta?.bastard_of;
+  if (typeof rankId !== "string") return null;
+  try {
+    const rank = getSocialRank(rankId);
+    return rank.bastardLabel;
+  } catch {
+    return null;
+  }
 }

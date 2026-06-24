@@ -12,8 +12,8 @@
 //   특성         — 활성 / 잠재 / 보인자 세 그룹
 //   혈통 / 기타  — generation, mother_id, father_id, inbreeding_f, is_sterile
 
-import { useEffect, useMemo } from "react";
-import type { AnimalRow } from "./dbTypes";
+import { useEffect, useMemo, useState } from "react";
+import type { AnimalRow, RoomRow } from "./dbTypes";
 import {
   describeAnimal,
   describeGenesWithGenotype,
@@ -23,6 +23,22 @@ import {
   gradeColor,
   type DetailedTraitInfo,
 } from "./phenotype";
+import {
+  formatBreedLabel,
+  getBreedTier,
+  getOrInferAncestry,
+  TIER_COLOR,
+  TIER_LABEL,
+  type BreedTier,
+} from "./ancestry";
+import { getSpecies } from "./species";
+import { getSocialRank } from "./species/humanProfile";
+import {
+  calcSellPrice,
+  calcSireSendFame,
+  canSendToSire,
+  isReadyToGraduate,
+} from "./pricing";
 
 const FARM = {
   bg: "#FFF8E0",
@@ -45,9 +61,17 @@ type Props = {
   animal: AnimalRow;
   currentDay: number;
   onClose: () => void;
+  /** 보육실 졸업 액션용. 없으면 액션 패널 안 그림. */
+  actions?: {
+    /** 빈 방 후보 (animal=null 인 방) */
+    availableRooms: RoomRow[];
+    onRelocate: (animalId: string, roomId: string) => Promise<void> | void;
+    onSell: (animalId: string, price: number) => Promise<void> | void;
+    onSendToSire: (animalId: string, fameGain: number) => Promise<void> | void;
+  };
 };
 
-export default function AnimalDetailModal({ animal, currentDay, onClose }: Props) {
+export default function AnimalDetailModal({ animal, currentDay, onClose, actions }: Props) {
   const d = useMemo(() => describeAnimal(animal), [animal]);
   const grade = gradeColor(animal.grade);
 
@@ -56,8 +80,28 @@ export default function AnimalDetailModal({ animal, currentDay, onClose }: Props
   const expressedTraits = useMemo(() => describeExpressedTraits(animal), [animal]);
   const carrierTraits = useMemo(() => describeCarrierTraits(animal), [animal]);
 
-  const activeTraits = expressedTraits.filter((t) => t.active);
-  const latentTraits = expressedTraits.filter((t) => !t.active);
+  // 혈통 (순종이면 배지/섹션 안 그림)
+  const ancestry = useMemo(() => getOrInferAncestry(animal), [animal]);
+  const breedTier = useMemo(() => getBreedTier(ancestry, animal.species), [ancestry, animal.species]);
+  const breedLabel = useMemo(
+    () => formatBreedLabel(ancestry, animal.species),
+    [ancestry, animal.species],
+  );
+
+  // 사생아 구체 라벨 + 친부 정보 (출산 시 metadata 에 저장됨)
+  const bastardOverride = useMemo(() => getBastardOverride(animal), [animal]);
+  const sireInfo = useMemo(() => extractSireInfo(animal), [animal]);
+
+  // active_traits 라벨 교체
+  const expressedDisplay = useMemo(() => {
+    if (!bastardOverride) return expressedTraits;
+    return expressedTraits.map((t) =>
+      t.id === "noble_bastard" ? { ...t, label: bastardOverride } : t,
+    );
+  }, [expressedTraits, bastardOverride]);
+
+  const activeTraits = expressedDisplay.filter((t) => t.active);
+  const latentTraits = expressedDisplay.filter((t) => !t.active);
 
   const age = d.ageInDays(currentDay);
   const toAdult = d.daysToAdult(currentDay);
@@ -156,9 +200,21 @@ export default function AnimalDetailModal({ animal, currentDay, onClose }: Props
             </div>
             <div
               className="font-mono"
-              style={{ fontSize: 11, color: FARM.inkSoft, letterSpacing: "0.05em", marginTop: 3 }}
+              style={{
+                fontSize: 11,
+                color: FARM.inkSoft,
+                letterSpacing: "0.05em",
+                marginTop: 3,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                flexWrap: "wrap",
+              }}
             >
-              {d.speciesLabel} · GEN {animal.generation}
+              <span>
+                {d.speciesLabel} · GEN {animal.generation}
+              </span>
+              {breedTier !== "pure" && <BreedBadge tier={breedTier} label={breedLabel} />}
             </div>
           </div>
           <div
@@ -201,6 +257,17 @@ export default function AnimalDetailModal({ animal, currentDay, onClose }: Props
 
         {/* Body (scrollable) */}
         <div style={{ overflowY: "auto", padding: "16px 22px 22px" }}>
+          {/* 보육실 졸업 액션 — 성체 도달 + 보육실 + actions 있을 때만 */}
+          {actions && isReadyToGraduate(animal, currentDay) && (
+            <NurseryActions
+              animal={animal}
+              availableRooms={actions.availableRooms}
+              onRelocate={actions.onRelocate}
+              onSell={actions.onSell}
+              onSendToSire={actions.onSendToSire}
+            />
+          )}
+
           {/* 상태 */}
           <Section title="상태" en="STATUS">
             <KVGrid>
@@ -294,6 +361,9 @@ export default function AnimalDetailModal({ animal, currentDay, onClose }: Props
 
           {/* 혈통 */}
           <Section title="혈통" en="LINEAGE">
+            {/* 혈통 구성 (ancestry 비율) — 순종도 노출 (1.0 한 줄) */}
+            <AncestryBreakdown ancestry={ancestry} majorSpecies={animal.species} />
+
             <KVGrid>
               <KV k="세대" v={`GEN ${animal.generation}`} />
               <KV
@@ -313,6 +383,9 @@ export default function AnimalDetailModal({ animal, currentDay, onClose }: Props
               <KV k="모친 ID" v={shortId(animal.mother_id)} />
               <KV k="부친 ID" v={shortId(animal.father_id)} />
             </KVGrid>
+
+            {/* 친부 정보 — 출산 시 metadata.sire_info 에 저장된 경우 노출 */}
+            {sireInfo && <SireInfoBlock info={sireInfo} />}
           </Section>
 
           {/* DEBUG */}
@@ -590,4 +663,618 @@ function locationLabel(a: AnimalRow): string {
 function shortId(id: string | null): string {
   if (!id) return "—";
   return id.slice(0, 8);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 혈통 표시 헬퍼
+// ═══════════════════════════════════════════════════════════════════════
+
+function BreedBadge({ tier, label }: { tier: BreedTier; label: string }) {
+  const palette = TIER_COLOR[tier];
+  return (
+    <span
+      className="font-mono"
+      style={{
+        background: palette.bg,
+        color: palette.fg,
+        border: `1px solid ${palette.border}`,
+        padding: "1px 7px",
+        fontSize: 10,
+        borderRadius: 3,
+        letterSpacing: "0.04em",
+        fontWeight: 700,
+        whiteSpace: "nowrap",
+        lineHeight: 1.3,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+/**
+ * ancestry 비율을 막대 + 라벨로 노출.
+ * "토끼수인 75% · 인간 25%" 같은 형태.
+ */
+function AncestryBreakdown({
+  ancestry,
+  majorSpecies,
+}: {
+  ancestry: Record<string, number>;
+  majorSpecies: string;
+}) {
+  const entries = Object.entries(ancestry)
+    .sort((a, b) => b[1] - a[1])
+    .map(([sp, ratio]) => ({
+      species: sp,
+      ratio,
+      label: safeSpeciesLabel(sp),
+      isMajor: sp === majorSpecies,
+    }));
+
+  return (
+    <div
+      style={{
+        background: "rgba(61,47,31,0.03)",
+        border: `1px dashed ${FARM.line}`,
+        borderRadius: 4,
+        padding: "8px 10px",
+        marginBottom: 10,
+        display: "flex",
+        flexDirection: "column",
+        gap: 5,
+      }}
+    >
+      {entries.map((e) => (
+        <div
+          key={e.species}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "70px 1fr 46px",
+            gap: 8,
+            alignItems: "center",
+            fontSize: 11,
+          }}
+        >
+          <span style={{ color: e.isMajor ? FARM.ink : FARM.inkSoft, fontWeight: e.isMajor ? 700 : 400 }}>
+            {e.label}
+          </span>
+          <div
+            style={{
+              height: 6,
+              background: "rgba(61,47,31,0.08)",
+              borderRadius: 3,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.round(e.ratio * 100)}%`,
+                background: e.isMajor ? "#8FE600" : "rgba(150,90,200,0.55)",
+              }}
+            />
+          </div>
+          <span
+            className="font-mono"
+            style={{
+              fontSize: 10,
+              color: FARM.inkSoft,
+              textAlign: "right",
+              fontWeight: 700,
+            }}
+          >
+            {formatRatio(e.ratio)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function safeSpeciesLabel(speciesId: string): string {
+  try {
+    return getSpecies(speciesId).label_ko;
+  } catch {
+    return speciesId;
+  }
+}
+
+function formatRatio(r: number): string {
+  // 1.0 → "100%", 0.875 → "87.5%", 0.125 → "12.5%"
+  const pct = r * 100;
+  if (Math.abs(pct - Math.round(pct)) < 0.01) return `${Math.round(pct)}%`;
+  return `${pct.toFixed(1)}%`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 친부 정보 (출산 시 자식 metadata.sire_info 에 저장)
+// ═══════════════════════════════════════════════════════════════════════
+
+type SireInfo = {
+  name: string;
+  grade?: string;
+  species?: string;
+  socialRankId?: string;
+};
+
+function extractSireInfo(animal: AnimalRow): SireInfo | null {
+  const meta = animal.metadata as Record<string, unknown> | null;
+  const raw = meta?.sire_info;
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.name !== "string") return null;
+  return {
+    name: obj.name,
+    grade: typeof obj.grade === "string" ? obj.grade : undefined,
+    species: typeof obj.species === "string" ? obj.species : undefined,
+    socialRankId:
+      typeof obj.socialRankId === "string" ? obj.socialRankId : undefined,
+  };
+}
+
+function SireInfoBlock({ info }: { info: SireInfo }) {
+  const rankLabel = info.socialRankId
+    ? (() => {
+        try {
+          return getSocialRank(info.socialRankId!).label_ko;
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: "8px 10px",
+        background: "rgba(34,72,137,0.05)",
+        border: `1px solid rgba(34,72,137,0.2)`,
+        borderRadius: 4,
+        display: "flex",
+        flexDirection: "column",
+        gap: 3,
+      }}
+    >
+      <div
+        className="font-mono"
+        style={{
+          fontSize: 9,
+          color: FARM.inkFaint,
+          letterSpacing: "0.2em",
+          fontWeight: 700,
+        }}
+      >
+        친부
+      </div>
+      <div style={{ fontSize: 12, color: FARM.ink, fontWeight: 700 }}>
+        {info.name} ♂{info.grade && (
+          <span
+            className="font-mono"
+            style={{
+              fontSize: 10,
+              color: FARM.inkSoft,
+              fontWeight: 700,
+              marginLeft: 6,
+              letterSpacing: "0.05em",
+            }}
+          >
+            {info.grade}
+          </span>
+        )}
+      </div>
+      <div className="font-mono" style={{ fontSize: 10, color: FARM.inkSoft, letterSpacing: "0.03em" }}>
+        {info.species && safeSpeciesLabel(info.species)}
+        {rankLabel && ` · ${rankLabel}`}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 사생아 라벨 구체화
+// ═══════════════════════════════════════════════════════════════════════
+//
+// active_traits 에 "noble_bastard" 가 있고 metadata.bastard_of 에 socialRankId 가
+// 저장돼있으면 "후작의 사생아" 같은 구체 라벨로 표시. 없으면 trait 기본 라벨 유지.
+function getBastardOverride(animal: AnimalRow): string | null {
+  if (!animal.active_traits.includes("noble_bastard")) return null;
+  const meta = animal.metadata as Record<string, unknown> | null;
+  const rankId = meta?.bastard_of;
+  if (typeof rankId !== "string") return null;
+  try {
+    return getSocialRank(rankId).bastardLabel;
+  } catch {
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 보육실 졸업 액션 패널
+// ═══════════════════════════════════════════════════════════════════════
+//
+// 성체 도달한 보육실 동물을 어디로 보낼지 선택.
+//   - 방으로 이동 (암컷만, 빈 방 선택)
+//   - 판매 (가격 자동 계산)
+//   - 친부에게 송환 (명성 +N, 친부 정보 있어야 가능)
+//
+// 두 단계 확정: 첫 클릭 → "확정?" 펼침, 두 번째 클릭 → 실행.
+// 실수 방지 + 모달 안 confirm 다이얼로그 안 띄움.
+
+type PendingKind = "relocate" | "sell" | "send" | null;
+
+function NurseryActions({
+  animal,
+  availableRooms,
+  onRelocate,
+  onSell,
+  onSendToSire,
+}: {
+  animal: AnimalRow;
+  availableRooms: RoomRow[];
+  onRelocate: (animalId: string, roomId: string) => Promise<void> | void;
+  onSell: (animalId: string, price: number) => Promise<void> | void;
+  onSendToSire: (animalId: string, fameGain: number) => Promise<void> | void;
+}) {
+  const [pending, setPending] = useState<PendingKind>(null);
+  const [pickedRoomId, setPickedRoomId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const isMale = animal.sex === "M";
+  const sellPrice = useMemo(() => calcSellPrice(animal), [animal]);
+  const fameGain = useMemo(() => calcSireSendFame(animal), [animal]);
+  const sireAvailable = canSendToSire(animal);
+  const sireName =
+    sireAvailable
+      ? ((animal.metadata as Record<string, unknown>).sire_info as { name?: string }).name
+      : null;
+
+  const reset = () => {
+    setPending(null);
+    setPickedRoomId(null);
+  };
+
+  const runRelocate = async () => {
+    if (!pickedRoomId) return;
+    setBusy(true);
+    try {
+      await onRelocate(animal.id, pickedRoomId);
+    } finally {
+      setBusy(false);
+      reset();
+    }
+  };
+
+  const runSell = async () => {
+    setBusy(true);
+    try {
+      await onSell(animal.id, sellPrice);
+    } finally {
+      setBusy(false);
+      reset();
+    }
+  };
+
+  const runSend = async () => {
+    setBusy(true);
+    try {
+      await onSendToSire(animal.id, fameGain);
+    } finally {
+      setBusy(false);
+      reset();
+    }
+  };
+
+  return (
+    <div
+      style={{
+        marginBottom: 16,
+        padding: 12,
+        background: "rgba(143,230,0,0.07)",
+        border: "1px solid rgba(143,230,0,0.45)",
+        borderRadius: 6,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 8,
+          marginBottom: 10,
+        }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#3D5500" }}>
+          성체로 자랐어요
+        </span>
+        <span
+          className="font-mono"
+          style={{
+            fontSize: 9,
+            color: FARM.inkFaint,
+            letterSpacing: "0.2em",
+            fontWeight: 700,
+          }}
+        >
+          GRADUATE
+        </span>
+      </div>
+
+      {/* 펼친 화면(pending 있음) 또는 기본 메뉴 */}
+      {pending === "relocate" ? (
+        <RelocateForm
+          rooms={availableRooms}
+          pickedRoomId={pickedRoomId}
+          setPickedRoomId={setPickedRoomId}
+          onConfirm={runRelocate}
+          onCancel={reset}
+          busy={busy}
+        />
+      ) : pending === "sell" ? (
+        <ConfirmRow
+          message={`판매 — ${sellPrice}₵ 입금`}
+          confirmLabel={`${sellPrice}₵ 받기`}
+          confirmColor="#3D5500"
+          confirmBg="rgba(143,230,0,0.25)"
+          confirmBorder="rgba(143,230,0,0.65)"
+          onConfirm={runSell}
+          onCancel={reset}
+          busy={busy}
+        />
+      ) : pending === "send" ? (
+        <ConfirmRow
+          message={`${sireName ?? "친부"}에게 송환 — 명성 +${fameGain}`}
+          confirmLabel={`명성 +${fameGain}`}
+          confirmColor="#6A3D9A"
+          confirmBg="rgba(150,90,200,0.18)"
+          confirmBorder="rgba(150,90,200,0.55)"
+          onConfirm={runSend}
+          onCancel={reset}
+          busy={busy}
+        />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <ActionButton
+            disabled={isMale}
+            disabledHint={isMale ? "수컷은 방으로 옮길 수 없어요" : undefined}
+            label="방으로 옮기기"
+            sub={`빈 방 ${availableRooms.length}개`}
+            onClick={() => setPending("relocate")}
+          />
+          <ActionButton
+            label="판매"
+            sub={`${sellPrice}₵`}
+            onClick={() => setPending("sell")}
+          />
+          <ActionButton
+            disabled={!sireAvailable}
+            disabledHint={!sireAvailable ? "친부 정보가 없어요" : undefined}
+            label="친부에게 보내기"
+            sub={sireAvailable ? `명성 +${fameGain}` : "—"}
+            onClick={() => setPending("send")}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActionButton({
+  label,
+  sub,
+  onClick,
+  disabled,
+  disabledHint,
+}: {
+  label: string;
+  sub: string;
+  onClick: () => void;
+  disabled?: boolean;
+  disabledHint?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      title={disabledHint}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr auto",
+        gap: 10,
+        padding: "8px 12px",
+        background: disabled ? "rgba(61,47,31,0.04)" : "#FFFFFF",
+        border: `1px solid ${disabled ? "rgba(61,47,31,0.15)" : "rgba(34,72,137,0.35)"}`,
+        borderRadius: 4,
+        cursor: disabled ? "not-allowed" : "pointer",
+        textAlign: "left",
+        font: "inherit",
+        opacity: disabled ? 0.55 : 1,
+        transition: "background .12s, border-color .12s",
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.background = "#FFF8E0";
+        e.currentTarget.style.borderColor = FARM.blue;
+      }}
+      onMouseLeave={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.background = "#FFFFFF";
+        e.currentTarget.style.borderColor = "rgba(34,72,137,0.35)";
+      }}
+    >
+      <span style={{ fontSize: 12, fontWeight: 700, color: FARM.ink }}>{label}</span>
+      <span
+        className="font-mono"
+        style={{
+          fontSize: 11,
+          color: disabled ? FARM.inkFaint : FARM.inkSoft,
+          fontWeight: 700,
+        }}
+      >
+        {sub}
+      </span>
+    </button>
+  );
+}
+
+function ConfirmRow({
+  message,
+  confirmLabel,
+  confirmColor,
+  confirmBg,
+  confirmBorder,
+  onConfirm,
+  onCancel,
+  busy,
+}: {
+  message: string;
+  confirmLabel: string;
+  confirmColor: string;
+  confirmBg: string;
+  confirmBorder: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontSize: 12, color: FARM.ink, fontWeight: 600 }}>{message}</div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          type="button"
+          onClick={busy ? undefined : onConfirm}
+          disabled={busy}
+          className="font-mono"
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            background: confirmBg,
+            border: `1.5px solid ${confirmBorder}`,
+            color: confirmColor,
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.05em",
+            cursor: busy ? "wait" : "pointer",
+            borderRadius: 3,
+          }}
+        >
+          {busy ? "처리 중…" : confirmLabel}
+        </button>
+        <button
+          type="button"
+          onClick={busy ? undefined : onCancel}
+          disabled={busy}
+          className="font-mono"
+          style={{
+            padding: "8px 14px",
+            background: "transparent",
+            border: `1px solid ${FARM.line}`,
+            color: FARM.inkSoft,
+            fontSize: 10,
+            letterSpacing: "0.15em",
+            fontWeight: 700,
+            cursor: busy ? "wait" : "pointer",
+            borderRadius: 3,
+          }}
+        >
+          취소
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RelocateForm({
+  rooms,
+  pickedRoomId,
+  setPickedRoomId,
+  onConfirm,
+  onCancel,
+  busy,
+}: {
+  rooms: RoomRow[];
+  pickedRoomId: string | null;
+  setPickedRoomId: (id: string | null) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontSize: 12, color: FARM.ink, fontWeight: 600 }}>
+        {rooms.length === 0 ? "빈 방이 없어요" : "옮길 방을 골라요"}
+      </div>
+
+      {rooms.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {rooms.map((r) => {
+            const active = pickedRoomId === r.id;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => setPickedRoomId(r.id)}
+                className="font-mono"
+                style={{
+                  padding: "6px 10px",
+                  background: active ? "rgba(34,72,137,0.18)" : "#FFFFFF",
+                  border: `1px solid ${active ? FARM.blue : "rgba(34,72,137,0.3)"}`,
+                  color: active ? FARM.blue : FARM.ink,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.05em",
+                  cursor: "pointer",
+                  borderRadius: 3,
+                }}
+              >
+                {r.floor}F · {r.position}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          type="button"
+          onClick={busy || !pickedRoomId ? undefined : onConfirm}
+          disabled={busy || !pickedRoomId}
+          className="font-mono"
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            background: pickedRoomId ? "rgba(34,72,137,0.2)" : "rgba(61,47,31,0.05)",
+            border: `1.5px solid ${pickedRoomId ? FARM.blue : "rgba(61,47,31,0.2)"}`,
+            color: pickedRoomId ? FARM.blue : FARM.inkFaint,
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.05em",
+            cursor: busy ? "wait" : pickedRoomId ? "pointer" : "not-allowed",
+            borderRadius: 3,
+          }}
+        >
+          {busy ? "처리 중…" : pickedRoomId ? "이동" : "방 선택"}
+        </button>
+        <button
+          type="button"
+          onClick={busy ? undefined : onCancel}
+          disabled={busy}
+          className="font-mono"
+          style={{
+            padding: "8px 14px",
+            background: "transparent",
+            border: `1px solid ${FARM.line}`,
+            color: FARM.inkSoft,
+            fontSize: 10,
+            letterSpacing: "0.15em",
+            fontWeight: 700,
+            cursor: busy ? "wait" : "pointer",
+            borderRadius: 3,
+          }}
+        >
+          취소
+        </button>
+      </div>
+    </div>
+  );
 }

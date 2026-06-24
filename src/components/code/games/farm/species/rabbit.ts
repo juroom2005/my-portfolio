@@ -3,6 +3,7 @@
 // 형질: 모색·무늬·눈색·귀모양 (4개) / 희귀: 섀도우·달빛
 
 import type { Species } from "./types";
+import { SKIN_TONE_GENE } from "./sharedGenes";
 
 export const RABBIT: Species = {
   id: "rabbit",
@@ -19,6 +20,7 @@ export const RABBIT: Species = {
   litter_max: 5,
 
   genes: [
+    SKIN_TONE_GENE,
     {
       id: "color",
       label_ko: "모색",

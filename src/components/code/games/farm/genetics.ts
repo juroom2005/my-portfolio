@@ -21,6 +21,13 @@ import {
 } from "./species";
 import { calcGrade } from "./grading";
 import type { Grade } from "./dbTypes";
+import {
+  type Ancestry,
+  pureAncestry,
+  mixAncestry,
+  decideMajorSpecies,
+  getOrInferAncestry,
+} from "./ancestry";
 
 // ── 게임 디자인 상수 ────────────────────────────────────────────────────
 const MUTATION_RATE = 0.03;
@@ -46,6 +53,8 @@ export type NewAnimalData = {
   health: number;
   fertility: number;
   grade: Grade;
+  /** 혈통 비율 (종 id → 비율, 합 1.0). 풀이면 단일 종 1.0. */
+  ancestry: Ancestry;
 };
 
 export type ParentAnimal = {
@@ -66,6 +75,8 @@ export type ParentAnimal = {
   health: number;
   fertility: number;
   grade: Grade | null;
+  /** 부모의 혈통. 없으면 species 기준 순종으로 폴백. */
+  ancestry?: Ancestry | null;
 };
 
 export type BreedInput = {
@@ -161,6 +172,7 @@ export function makeStarter(
     is_sterile,
     beauty, stamina, temperament, health, fertility,
     grade,
+    ancestry: pureAncestry(species.id),
   };
 }
 
@@ -198,17 +210,35 @@ export function makeVisitorBuck(
 }
 
 // ── 교배 ────────────────────────────────────────────────────────────────
+//
+// 혼혈 지원: 부모 종이 달라도 OK. 자식 ancestry = 부모 두 ancestry 평균.
+// 자식의 종(species) = 주(major) 종. 생리적 파라미터(base_fertility, gestation,
+// litter)는 모친 종 기준 (자궁이 모친 거라).
+//
+// species 인자는 "자식이 속할 종" 으로 호출자가 결정해서 넘기지 않아도 됨 —
+// 내부에서 자동 결정. 단 하위 호환을 위해 species 가 주어지면 그걸로 강제.
 
-export function breed(species: Species, input: BreedInput): BreedResult {
-  if (input.mother.species !== species.id || input.father.species !== species.id) {
-    return { pregnancy: false, reason: "species mismatch" };
-  }
+export function breed(speciesHint: Species | null, input: BreedInput): BreedResult {
   if (input.mother.sex !== "F" || input.father.sex !== "M") {
     return { pregnancy: false, reason: "sex mismatch" };
   }
   if (input.mother.is_sterile || input.father.is_sterile) {
     return { pregnancy: false, reason: "sterile parent" };
   }
+
+  // 부모 ancestry 합산 → 자식 ancestry
+  const motherAncestry = getOrInferAncestry(input.mother);
+  const fatherAncestry = getOrInferAncestry(input.father);
+  const childAncestry = mixAncestry(motherAncestry, fatherAncestry);
+
+  // 자식의 주 종 결정 — 동률 시 모친 우선
+  const majorSpeciesId = decideMajorSpecies(childAncestry, input.mother.species);
+
+  // speciesHint 가 있으면 검증 (디버그용), 없으면 자동 결정
+  const childSpecies = speciesHint ?? getSpecies(majorSpeciesId);
+
+  // 임신/산자수 계산은 모친 종 생리 기준
+  const motherSpecies = getSpecies(input.mother.species);
 
   const rng = new Rng(input.seed);
 
@@ -217,10 +247,10 @@ export function breed(species: Species, input: BreedInput): BreedResult {
   const fatherEffects = collectActiveEffects(input.father.active_traits, TRAIT_REGISTRY);
   const allEffects = [...motherEffects, ...fatherEffects];
 
-  // 임신 성공
+  // 임신 성공 — 모친 종 base_fertility
   const fertilityFactor = (input.mother.fertility + input.father.fertility) / 200;
   const inbreedingFactor = 1 - input.inbreedingF * INBREEDING_FERTILITY_PENALTY;
-  let pSuccess = species.base_fertility * fertilityFactor * inbreedingFactor;
+  let pSuccess = motherSpecies.base_fertility * fertilityFactor * inbreedingFactor;
 
   for (const eff of allEffects) {
     if (eff.type === "fertility_mult") pSuccess *= eff.value;
@@ -230,8 +260,8 @@ export function breed(species: Species, input: BreedInput): BreedResult {
     return { pregnancy: false, reason: "roll failed" };
   }
 
-  // 산자수
-  let litterCount = rng.intRange(species.litter_min, species.litter_max);
+  // 산자수 — 모친 종 기준
+  let litterCount = rng.intRange(motherSpecies.litter_min, motherSpecies.litter_max);
   for (const eff of allEffects) {
     if (eff.type === "litter_bonus") litterCount += eff.value;
   }
@@ -239,37 +269,45 @@ export function breed(species: Species, input: BreedInput): BreedResult {
 
   const offspring: NewAnimalData[] = [];
   for (let i = 0; i < litterCount; i++) {
-    offspring.push(makeOffspring(species, input, rng, allEffects));
+    offspring.push(makeOffspring(childSpecies, input, rng, allEffects, childAncestry));
   }
 
   return { pregnancy: true, offspring };
 }
 
 function makeOffspring(
-  species: Species,
+  childSpecies: Species,
   input: BreedInput,
   rng: Rng,
   parentEffects: ReturnType<typeof collectActiveEffects>,
+  childAncestry: Ancestry,
 ): NewAnimalData {
-  // 외형 유전자
+  // 부모 두 종의 형질 ID 합집합 — 혼혈 자식은 양쪽 종 형질을 모두 보유
+  const motherSpecies = getSpecies(input.mother.species);
+  const fatherSpecies = getSpecies(input.father.species);
+  const allGeneTraits = mergeGeneTraits(motherSpecies.genes, fatherSpecies.genes);
+  const allRareGenes = mergeRareGenes(motherSpecies.rare_genes, fatherSpecies.rare_genes);
+
+  // 외형 유전자 — 양쪽 종 형질 모두 순회
   const genes: Record<string, Genotype> = {};
-  for (const trait of species.genes) {
+  for (const trait of allGeneTraits) {
     const pool = trait.alleles.map((a) => a.code);
-    const m = inheritAllele(input.mother.genes[trait.id], rng);
-    const f = inheritAllele(input.father.genes[trait.id], rng);
+    const fallback = pool[0];
+    const m = inheritAllele(input.mother.genes[trait.id], rng, fallback);
+    const f = inheritAllele(input.father.genes[trait.id], rng, fallback);
     genes[trait.id] = [maybeMutate(m, pool, rng), maybeMutate(f, pool, rng)];
   }
 
-  // 희귀 유전자
+  // 희귀 유전자 — 양쪽 종 합집합
   const rare_genes: Record<string, Genotype> = {};
-  for (const rare of species.rare_genes) {
+  for (const rare of allRareGenes) {
     const normal = findNormalAllele(rare);
     const recessive = findRareAllele(rare);
     const pool: Allele[] = [normal, recessive];
     const motherGeno: Genotype = input.mother.rare_genes[rare.id] ?? [normal, normal];
     const fatherGeno: Genotype = input.father.rare_genes[rare.id] ?? [normal, normal];
-    const m = inheritAllele(motherGeno, rng);
-    const f = inheritAllele(fatherGeno, rng);
+    const m = inheritAllele(motherGeno, rng, normal);
+    const f = inheritAllele(fatherGeno, rng, normal);
     rare_genes[rare.id] = [maybeMutate(m, pool, rng), maybeMutate(f, pool, rng)];
   }
 
@@ -291,8 +329,8 @@ function makeOffspring(
     const motherGeno: Genotype = input.mother.traits[traitId] ?? [dom, dom];
     const fatherGeno: Genotype = input.father.traits[traitId] ?? [dom, dom];
 
-    const m = inheritAllele(motherGeno, rng);
-    const f = inheritAllele(fatherGeno, rng);
+    const m = inheritAllele(motherGeno, rng, dom);
+    const f = inheritAllele(fatherGeno, rng, dom);
     const offspring_geno: Genotype = [maybeMutate(m, pool, rng), maybeMutate(f, pool, rng)];
 
     // 정상×정상이면 traits 에 기록 안 함 (잡음 제거)
@@ -335,7 +373,7 @@ function makeOffspring(
 
   const grade = calcGrade({
     beauty, stamina, temperament, health, fertility,
-    rare_genes, species: species.id,
+    rare_genes, species: childSpecies.id,
   });
 
   // 새끼는 starter 캡 없음 — 등급 슬롯만큼 활성
@@ -346,7 +384,7 @@ function makeOffspring(
   const generation = Math.max(input.mother.generation, input.father.generation) + 1;
 
   return {
-    species: species.id,
+    species: childSpecies.id,
     sex,
     generation,
     mother_id: input.mother.id,
@@ -358,12 +396,48 @@ function makeOffspring(
     is_sterile,
     beauty, stamina, temperament, health, fertility,
     grade,
+    ancestry: childAncestry,
   };
+}
+
+// ── 격세유전 (Throwback) ───────────────────────────────────────────────
+//
+// TODO(future): 자식의 minor ancestry 비율에 비례한 확률로 그 종의 외형 형질이
+// 멘델 유전과 무관하게 발현되는 시스템. 예시:
+//   { rabbit: 0.875, human: 0.125 } → 인간 형질이 ~12.5% 확률로 throwback 발현
+// 자기 ancestry 의 minor 종 형질이 "조상의 흔적"으로 가끔 튀어나오는 효과.
+// 현재는 멘델 유전만 — 부모가 가진 알렐이 표준 우/열성 규칙대로 자식에게.
+
+// ── 종 형질 병합 헬퍼 ──────────────────────────────────────────────────
+
+function mergeGeneTraits(a: readonly GeneTrait[], b: readonly GeneTrait[]): GeneTrait[] {
+  const seen = new Set<string>();
+  const out: GeneTrait[] = [];
+  for (const t of [...a, ...b]) {
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    out.push(t);
+  }
+  return out;
+}
+
+function mergeRareGenes(a: readonly RareGeneSpec[], b: readonly RareGeneSpec[]): RareGeneSpec[] {
+  const seen = new Set<string>();
+  const out: RareGeneSpec[] = [];
+  for (const r of [...a, ...b]) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push(r);
+  }
+  return out;
 }
 
 // ── 헬퍼 ────────────────────────────────────────────────────────────────
 
-function inheritAllele(genotype: Genotype, rng: Rng): Allele {
+// 부모 한쪽에 그 형질이 없을 수 있음 (예: 형질이 나중에 추가된 경우).
+// 그때는 fallback 알렐(보통 그 형질의 첫 알렐 = 우성/정상)로 안전 처리.
+function inheritAllele(genotype: Genotype | undefined, rng: Rng, fallback: Allele): Allele {
+  if (!genotype || genotype.length < 2) return fallback;
   return rng.roll(0.5) ? genotype[0] : genotype[1];
 }
 

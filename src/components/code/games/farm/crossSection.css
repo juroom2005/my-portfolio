@@ -277,3 +277,105 @@
 .cs-house {
   animation: csHousePop 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   손님 방문 중 표시
+   ───────────────────────────────────────────────────────────── */
+
+.cs-room--visited {
+  background: linear-gradient(135deg, #FFF1E0 0%, #FFE6E0 100%);
+}
+
+.cs-room--visited > *:not(.cs-visitor-pin):not(.cs-hearts) {
+  animation: csVisitShake 0.55s ease-in-out infinite;
+}
+
+@keyframes csVisitShake {
+  0%, 100% { transform: translate(0, 0); }
+  25%      { transform: translate(-0.7px, 0.3px); }
+  50%      { transform: translate(0.7px, -0.3px); }
+  75%      { transform: translate(-0.4px, -0.4px); }
+}
+
+/* 방 안쪽 상단의 손님 핀 (방 밖으로 안 나가게 — 지붕 가림 방지) */
+.cs-visitor-pin {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px 2px 4px;
+  background: linear-gradient(180deg, #FFB6C8 0%, #FF8FA8 100%);
+  color: #FFFFFF;
+  font-family: monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(255, 143, 168, 0.5);
+  animation: csPinBob 1.4s ease-in-out infinite;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+}
+
+.cs-visitor-pin .cs-visitor-pin-icon {
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.cs-visitor-pin--buck {
+  background: linear-gradient(180deg, #FFD78F 0%, #E8A93F 100%);
+  box-shadow: 0 2px 6px rgba(201, 154, 46, 0.55);
+}
+
+@keyframes csPinBob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-1.5px); }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   방문 중 하트 파티클
+   ───────────────────────────────────────────────────────────── */
+.cs-hearts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  overflow: visible;
+}
+
+.cs-heart {
+  position: absolute;
+  bottom: 30%;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+  animation: csHeartFloat 2.6s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes csHeartFloat {
+  0% {
+    transform: translateY(0) scale(0.6) rotate(-8deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  50% {
+    transform: translateY(-32px) scale(1) rotate(6deg);
+    opacity: 0.85;
+  }
+  80% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateY(-60px) scale(0.85) rotate(-4deg);
+    opacity: 0;
+  }
+}

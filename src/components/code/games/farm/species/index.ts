@@ -3,15 +3,21 @@
 
 import { RABBIT } from "./rabbit";
 import { SHEEP } from "./sheep";
+import { HUMAN } from "./human";
 import type { Species } from "./types";
 
 export const SPECIES_REGISTRY: Record<string, Species> = {
   rabbit: RABBIT,
   sheep: SHEEP,
+  human: HUMAN,
 };
 
 // 캐릭터 생성기에서 플레이어가 시작 동물로 받을 수 있는 종
+// (인간은 농장에서 안 키우므로 제외)
 export const STARTER_SPECIES: string[] = ["rabbit", "sheep"];
+
+// 농장에서 키울 수 있는(방에 배치 가능한) 종 — 인간 제외
+export const FARM_SPECIES: string[] = ["rabbit", "sheep"];
 
 export function getSpecies(id: string): Species {
   const s = SPECIES_REGISTRY[id];

@@ -3,6 +3,7 @@
 // 형질: 모색(3대립 공우성)·털질·눈색·뿔 / 희귀: 구름·먹빛
 
 import type { Species } from "./types";
+import { SKIN_TONE_GENE } from "./sharedGenes";
 
 export const SHEEP: Species = {
   id: "sheep",
@@ -19,6 +20,7 @@ export const SHEEP: Species = {
   litter_max: 2,
 
   genes: [
+    SKIN_TONE_GENE,
     {
       id: "color",
       label_ko: "모색",

@@ -91,3 +91,8 @@ body {
   from { top: -20%; }
   to   { top: 120%; }
 }
+
+@keyframes ownerBedBlink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}

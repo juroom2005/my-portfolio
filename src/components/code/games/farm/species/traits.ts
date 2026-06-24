@@ -15,6 +15,7 @@ export const TRAIT_CATEGORIES = {
   physical: "신체",
   behavioral: "기질",
   rare: "특수",
+  social: "사회",
 } as const;
 
 export type TraitCategory = keyof typeof TRAIT_CATEGORIES;
@@ -377,4 +378,24 @@ registerTrait({
   description: "health +10",
   starter_carrier_chance: 0.15,
   mutation_chance: 0.01,
+});
+// ── 사회 ────────────────────────────────────────────────────────────────
+//
+// 귀족 인간 × 농장 동물 사이에서 태어난 새끼에게 부여되는 사회적 특성.
+// fixed inheritance → 멘델 유전 안 함. 출생 로직이 직접 부여.
+// 구체 라벨("후작의 사생아")은 동물 metadata.bastard_of 에 저장,
+// 이 특성은 "사생아 여부" 플래그 + 표시용.
+registerTrait({
+  id: "noble_bastard",
+  label_ko: "귀족의 사생아",
+  label_en: "Noble Bastard",
+  category: "social",
+  inheritance: { kind: "fixed" },
+  // 효과: 매력 보너스 + 약간의 일일 수입 (귀족 혈통의 후광)
+  effects: [
+    { type: "stat_bonus", stat: "beauty", value: 8 },
+    { type: "daily_income", value: 5 },
+  ],
+  rarity_label: "RARE",
+  description: "귀족 혈통의 후광 — 매력 +8, 일일 수입 +5",
 });

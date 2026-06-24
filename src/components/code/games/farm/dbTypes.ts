@@ -56,6 +56,8 @@ export type AnimalRow = {
   inbreeding_f: number;
   birth_visit_id: string | null;
   metadata: Record<string, unknown>;
+  /** 혈통 비율 (종 id → 비율, 합 1.0). null 이면 species 기준 순종으로 추론. */
+  ancestry: Record<string, number> | null;
   created_at: string;
   updated_at: string;
 };
@@ -95,7 +97,7 @@ export const TICKS_PER_DAY = 144;
 export const TICK_OPEN = 48;
 export const TICK_CLOSE = 108;
 export const TICK_WAKE = 36;
-export const TICK_FORCE_SLEEP = 16;
+export const TICK_FORCE_SLEEP = 12;  // 02:00 — 이 시각 도달 시 강제 수면 + 자동 정산
 export const TICK_MS_REAL = 7000;
 
 // ── 등급 ────────────────────────────────────────────────────────────────
