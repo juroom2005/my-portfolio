@@ -234,3 +234,83 @@ export function describeRareGenesWithGenotype(animal: Pick<AnimalRow, "rare_gene
     };
   });
 }
+
+// ── 스탯 구간 라벨 ────────────────────────────────────────────────────────
+//
+// 1–20 / 21–40 / 41–60 / 61–80 / 81–99 + 100(완전체) 별도 등급.
+// 기질은 "높을수록 좋음" 이 아니라 순함↔사나움 양극성 → 중립색.
+// 그 외 스탯은 빨강→초록 그라데이션 (높을수록 좋음).
+
+export type StatTier = {
+  idx: number;          // 0~4, 또는 5(완전체)
+  label: string;
+  color: string;
+  bg: string;
+  perfect: boolean;
+};
+
+const TIER_COLORS = [
+  { color: "#E24B4A", bg: "rgba(226,75,74,0.12)" },  // 1–20
+  { color: "#EF9F27", bg: "rgba(239,159,39,0.14)" }, // 21–40
+  { color: "#BA7517", bg: "rgba(186,117,23,0.12)" }, // 41–60
+  { color: "#639922", bg: "rgba(99,153,34,0.15)" },  // 61–80
+  { color: "#3B6D11", bg: "rgba(59,109,17,0.16)" },  // 81–99
+];
+const GOLD = { color: "#7a5b00", bg: "rgba(201,154,46,0.18)" };
+
+// 기질 전용 중립 팔레트 (가치판단 없음 — 사나움=붉은기, 순함=푸른기)
+const TEMPER_COLORS = [
+  { color: "#C0563C", bg: "rgba(192,86,60,0.12)" },  // 포악
+  { color: "#C99A2E", bg: "rgba(201,154,46,0.12)" }, // 거침
+  { color: "#6B5942", bg: "rgba(61,47,31,0.08)" },   // 무던
+  { color: "#3D7BA8", bg: "rgba(61,123,168,0.12)" }, // 온순
+  { color: "#2E5E8C", bg: "rgba(46,94,140,0.14)" },  // 더없이 순함
+];
+
+// 스탯별 라벨 세트 (1–20 → 81–99)
+const STAT_WORDS: Record<string, string[]> = {
+  beauty:      ["볼품없음", "평범 이하", "평범", "준수함", "빼어남"],
+  fertility:   ["불임 기질", "저조함", "보통", "왕성함", "다산형"],
+  stamina:     ["허약함", "약함", "보통", "튼튼함", "강건함"],
+  health:      ["병약함", "잔병치레", "양호함", "건강함", "강철 체질"],
+  temperament: ["포악함", "거침", "무던함", "온순함", "더없이 순함"],
+};
+
+// 만점(100) 전용 라벨
+const STAT_PERFECT: Record<string, string> = {
+  beauty: "절세미모",
+  fertility: "무한증식",
+  stamina: "불굴",
+  health: "무병장수",
+  temperament: "천성 순둥이",
+};
+
+/**
+ * 스탯 값 → 구간 정보.
+ * statName: beauty | fertility | stamina | health | temperament
+ */
+export function statTier(statName: string, value: number): StatTier {
+  const words = STAT_WORDS[statName] ?? ["최저", "낮음", "보통", "높음", "최고"];
+
+  // 만점 — 완전체 등급
+  if (value >= 100) {
+    return {
+      idx: 5,
+      label: STAT_PERFECT[statName] ?? "완전체",
+      color: GOLD.color,
+      bg: GOLD.bg,
+      perfect: true,
+    };
+  }
+
+  // 0~99 → 5구간
+  const i = value <= 20 ? 0 : value <= 40 ? 1 : value <= 60 ? 2 : value <= 80 ? 3 : 4;
+  const palette = statName === "temperament" ? TEMPER_COLORS[i] : TIER_COLORS[i];
+  return {
+    idx: i,
+    label: words[i],
+    color: palette.color,
+    bg: palette.bg,
+    perfect: false,
+  };
+}

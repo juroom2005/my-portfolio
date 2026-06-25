@@ -21,6 +21,7 @@ import {
   describeExpressedTraits,
   describeCarrierTraits,
   gradeColor,
+  statTier,
   type DetailedTraitInfo,
 } from "./phenotype";
 import {
@@ -69,16 +70,31 @@ type Props = {
     onSell: (animalId: string, price: number) => Promise<void> | void;
     onSendToSire: (animalId: string, fameGain: number) => Promise<void> | void;
   };
+   onRename?: (animalId: string, name: string) => Promise<void> | void;
+   animalsLookup?: AnimalRow[];
+
 };
 
-export default function AnimalDetailModal({ animal, currentDay, onClose, actions }: Props) {
+export default function AnimalDetailModal({ animal, currentDay, onClose, actions, onRename, animalsLookup }: Props) {
   const d = useMemo(() => describeAnimal(animal), [animal]);
   const grade = gradeColor(animal.grade);
-
   const genes = useMemo(() => describeGenesWithGenotype(animal), [animal]);
   const rares = useMemo(() => describeRareGenesWithGenotype(animal), [animal]);
   const expressedTraits = useMemo(() => describeExpressedTraits(animal), [animal]);
   const carrierTraits = useMemo(() => describeCarrierTraits(animal), [animal]);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(animal.name ?? "");
+  const [savingName, setSavingName] = useState(false);
+
+  const parentLabel = useMemo(() => {
+    const byId = new Map((animalsLookup ?? []).map((a) => [a.id, a]));
+    return (id: string | null): string => {
+      if (!id) return "—";
+      const found = byId.get(id);
+      const nm = found?.name?.trim();
+      return nm || shortId(id);
+    };
+  }, [animalsLookup]);
 
   // 혈통 (순종이면 배지/섹션 안 그림)
   const ancestry = useMemo(() => getOrInferAncestry(animal), [animal]);
@@ -87,6 +103,23 @@ export default function AnimalDetailModal({ animal, currentDay, onClose, actions
     () => formatBreedLabel(ancestry, animal.species),
     [ancestry, animal.species],
   );
+
+    // 다른 동물 모달로 바뀌면 편집 상태 초기화
+  useEffect(() => {
+    setEditingName(false);
+    setNameDraft(animal.name ?? "");
+  }, [animal.id, animal.name]);
+
+  const commitName = async () => {
+    if (!onRename) return;
+    setSavingName(true);
+    try {
+      await onRename(animal.id, nameDraft);
+      setEditingName(false);
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   // 사생아 구체 라벨 + 친부 정보 (출산 시 metadata 에 저장됨)
   const bastardOverride = useMemo(() => getBastardOverride(animal), [animal]);
@@ -125,6 +158,7 @@ export default function AnimalDetailModal({ animal, currentDay, onClose, actions
         alignItems: "center",
         justifyContent: "center",
         padding: 20,
+        
       }}
     >
       {/* 백드롭 */}
@@ -183,11 +217,68 @@ export default function AnimalDetailModal({ animal, currentDay, onClose, actions
                 gap: 6,
               }}
             >
-              <span>
-                {animal.name?.trim() || (
-                  <em style={{ color: FARM.inkFaint, fontStyle: "normal" }}>이름 없음</em>
-                )}
-              </span>
+              {editingName ? (
+                <input
+                  autoFocus
+                  value={nameDraft}
+                  maxLength={40}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void commitName();
+                    if (e.key === "Escape") {
+                      setEditingName(false);
+                      setNameDraft(animal.name ?? "");
+                    }
+                  }}
+                  disabled={savingName}
+                  placeholder="이름 입력"
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: FARM.ink,
+                    background: "#FFFFFF",
+                    border: `1.5px solid ${FARM.blue}`,
+                    borderRadius: 4,
+                    padding: "2px 8px",
+                    maxWidth: 180,
+                    fontFamily: "inherit",
+                  }}
+                />
+              ) : (
+                <span
+                  onClick={onRename ? () => setEditingName(true) : undefined}
+                  title={onRename ? "클릭해서 이름 변경" : undefined}
+                  style={{ cursor: onRename ? "text" : "default" }}
+                >
+                  {animal.name?.trim() || (
+                    <em style={{ color: FARM.inkFaint, fontStyle: "normal" }}>이름 없음</em>
+                  )}
+                  {onRename && (
+                    <span style={{ fontSize: 12, marginLeft: 6, opacity: 0.5 }}>✎</span>
+                  )}
+                </span>
+              )}
+              {editingName && (
+                <button
+                  type="button"
+                  onClick={() => void commitName()}
+                  disabled={savingName}
+                  className="font-mono"
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: "0.1em",
+                    padding: "4px 10px",
+                    background: FARM.blue,
+                    color: "#FFFFFF",
+                    border: "none",
+                    borderRadius: 3,
+                    cursor: savingName ? "wait" : "pointer",
+                  }}
+                >
+                  {savingName ? "…" : "저장"}
+                </button>
+              )}
               <span
                 style={{
                   fontSize: 16,
@@ -288,11 +379,11 @@ export default function AnimalDetailModal({ animal, currentDay, onClose, actions
 
           {/* 능력치 */}
           <Section title="능력치" en="STATS">
-            <StatBar label="외모" value={animal.beauty} />
-            <StatBar label="체력" value={animal.stamina} />
-            <StatBar label="기질" value={animal.temperament} />
-            <StatBar label="건강" value={animal.health} />
-            <StatBar label="번식력" value={animal.fertility} />
+            <StatBar statKey="beauty" label="외모" value={animal.beauty} />
+            <StatBar statKey="stamina" label="체력" value={animal.stamina} />
+            <StatBar statKey="temperament" label="기질" value={animal.temperament} />
+            <StatBar statKey="health" label="건강" value={animal.health} />
+            <StatBar statKey="fertility" label="번식력" value={animal.fertility} />
           </Section>
 
           {/* 외형 유전자 */}
@@ -380,8 +471,8 @@ export default function AnimalDetailModal({ animal, currentDay, onClose, actions
                   </span>
                 }
               />
-              <KV k="모친 ID" v={shortId(animal.mother_id)} />
-              <KV k="부친 ID" v={shortId(animal.father_id)} />
+              <KV k="친모" v={parentLabel(animal.mother_id)} />
+              <KV k="친부" v={parentLabel(animal.father_id)} />
             </KVGrid>
 
             {/* 친부 정보 — 출산 시 metadata.sire_info 에 저장된 경우 노출 */}
@@ -410,6 +501,7 @@ export default function AnimalDetailModal({ animal, currentDay, onClose, actions
           from { transform: scale(.96) translateY(8px); opacity: 0; }
           to { transform: scale(1) translateY(0); opacity: 1; }
         }
+        @keyframes statShimmer { 0% { background-position: 0% 0 } 100% { background-position: -200% 0 } }
       `}</style>
     </div>
   );
@@ -469,14 +561,17 @@ function KV({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
-// ── 능력치 막대 ────────────────────────────────────────────────────────
-function StatBar({ label, value }: { label: string; value: number }) {
+// ── 능력치 막대 (구간 라벨 + 색) ───────────────────────────────────────
+const GOLD_INK = "#7a5b00";
+
+function StatBar({ statKey, label, value }: { statKey: string; label: string; value: number }) {
   const pct = Math.max(0, Math.min(100, value));
+  const tier = statTier(statKey, value);
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "60px 1fr 36px",
+        gridTemplateColumns: "56px 1fr 86px 30px",
         gap: 8,
         alignItems: "center",
         padding: "3px 0",
@@ -487,22 +582,52 @@ function StatBar({ label, value }: { label: string; value: number }) {
       <div
         style={{
           height: 8,
-          background: FARM.statBg,
           borderRadius: 4,
           overflow: "hidden",
           border: `1px solid ${FARM.line}`,
+          ...(tier.perfect
+            ? {
+                background: "linear-gradient(90deg,#EF9F27,#C99A2E,#F5D76E,#C99A2E)",
+                backgroundSize: "200% 100%",
+                animation: "statShimmer 2.2s linear infinite",
+              }
+            : { background: FARM.statBg }),
         }}
       >
-        <div
-          style={{
-            height: "100%",
-            width: `${pct}%`,
-            background: pct >= 70 ? FARM.statFill : pct >= 40 ? "#C9D96A" : "#D9B86A",
-            transition: "width .4s ease",
-          }}
-        />
+        {!tier.perfect && (
+          <div
+            style={{
+              height: "100%",
+              width: `${pct}%`,
+              background: tier.color,
+              transition: "width .4s ease",
+            }}
+          />
+        )}
       </div>
-      <span className="font-mono" style={{ textAlign: "right", fontWeight: 700, color: FARM.ink }}>
+      <span
+        style={{
+          justifySelf: "start",
+          fontSize: 10,
+          fontWeight: 700,
+          color: tier.color,
+          background: tier.bg,
+          border: `1px solid ${tier.color}55`,
+          padding: "1px 7px",
+          borderRadius: 3,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {tier.perfect ? `★ ${tier.label}` : tier.label}
+      </span>
+      <span
+        className="font-mono"
+        style={{
+          textAlign: "right",
+          fontWeight: 700,
+          color: tier.perfect ? GOLD_INK : FARM.ink,
+        }}
+      >
         {value}
       </span>
     </div>

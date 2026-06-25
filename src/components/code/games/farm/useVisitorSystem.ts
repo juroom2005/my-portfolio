@@ -96,9 +96,15 @@ export function useVisitorSystem(args: {
       setVisitsToday(0);
     }
 
+
     const absTick = clock.day * TICKS_PER_DAY + clock.tick;
     const cur = stateRef.current;
     const p = propsRef.current;
+
+      // 폐점 도달 시 대기실에 남은 손님은 돌려보냄. 진행 중 방문은 그대로 유지.
+    if (clock.phase !== "open" && cur.pendingArrivals.length > 0) {
+      setPendingArrivals([]);
+    }
 
     // 1) 만료된 방문 정리 → 방문료 지급 + 종료 콜백
     let totalFee = 0;

@@ -262,3 +262,22 @@ export async function commitSettlementAction(
   revalidatePath(`/code/games/farm/${input.saveId}`);
   return data as SettlementResult;
 }
+
+// ── 동물 이름 변경 ─────────────────────────────────────────────────────
+export async function renameAnimalAction(input: {
+  saveId: string;
+  animalId: string;
+  name: string;
+}): Promise<{ name: string | null }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("rename_animal", {
+    p_animal_id: input.animalId,
+    p_name: input.name,
+  });
+  if (error) {
+    console.error("[renameAnimalAction] error:", error);
+    throw new Error(`renameAnimal failed: ${error.message}`);
+  }
+  revalidatePath(`/code/games/farm/${input.saveId}`);
+  return { name: (data as { name: string | null }).name };
+}

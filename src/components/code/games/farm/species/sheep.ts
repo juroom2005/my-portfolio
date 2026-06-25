@@ -4,6 +4,7 @@
 
 import type { Species } from "./types";
 import { SKIN_TONE_GENE } from "./sharedGenes";
+import { detectMutationColor } from "./mutationColors";
 
 export const SHEEP: Species = {
   id: "sheep",
@@ -32,6 +33,8 @@ export const SHEEP: Species = {
       ],
       // B + g 공우성 (이형접합 시 얼룩)
       expression: ([a, b]) => {
+        const mut = detectMutationColor([a, b]);
+        if (mut) return mut;
         if (a === "B" && b === "B") return "검정";
         if ((a === "B" && b === "g") || (a === "g" && b === "B")) return "얼룩";
         if (a === "B" || b === "B") return "검정";
@@ -58,7 +61,11 @@ export const SHEEP: Species = {
         { code: "A", label_ko: "호박", dominant: true },
         { code: "u", label_ko: "파란", dominant: false },
       ],
-      expression: ([a, b]) => (a === "A" || b === "A" ? "호박색" : "파란"),
+      expression: ([a, b]) => {
+        const mut = detectMutationColor([a, b]);
+        if (mut) return mut;
+        return a === "A" || b === "A" ? "호박색" : "파란";
+      },
       player_selectable: true,
     },
     {

@@ -28,12 +28,24 @@ import {
   decideMajorSpecies,
   getOrInferAncestry,
 } from "./ancestry";
+import { MUT_COAT, MUT_EYE } from "./species/mutationColors";
 
 // ── 게임 디자인 상수 ────────────────────────────────────────────────────
 const MUTATION_RATE = 0.03;
-const STAT_NOISE = 8;
+const STAT_NOISE = 10;             
 const INBREEDING_STAT_PENALTY = 15;
 const INBREEDING_FERTILITY_PENALTY = 0.6;
+
+// 특이 변이색 — 형질당 독립 롤
+const SPECIAL_COLOR_RATE = 0.003;
+
+// 능력치 양방향 변이 — 스탯당 독립 롤
+const STAT_JACKPOT_RATE = 0.03;    
+const STAT_DUD_RATE = 0.03;        
+const STAT_JACKPOT_MIN = 15;
+const STAT_JACKPOT_MAX = 30;
+const STAT_DUD_MIN = 15;
+const STAT_DUD_MAX = 30;
 
 // ── 데이터 타입 ─────────────────────────────────────────────────────────
 export type NewAnimalData = {
@@ -298,6 +310,17 @@ function makeOffspring(
     genes[trait.id] = [maybeMutate(m, pool, rng), maybeMutate(f, pool, rng)];
   }
 
+  // 특이 변이색 게이트 — 멘델 유전과 무관. 당첨 시 동형으로 덮어씀.
+  // 모색(color) / 눈색(eye) 형질이 있는 경우에만.
+  if (genes.color && rng.roll(SPECIAL_COLOR_RATE)) {
+    const pick = rng.pick(MUT_COAT).code;
+    genes.color = [pick, pick];
+  }
+  if (genes.eye && rng.roll(SPECIAL_COLOR_RATE)) {
+    const pick = rng.pick(MUT_EYE).code;
+    genes.eye = [pick, pick];
+  }
+
   // 희귀 유전자 — 양쪽 종 합집합
   const rare_genes: Record<string, Genotype> = {};
   for (const rare of allRareGenes) {
@@ -361,7 +384,13 @@ function makeOffspring(
   };
 
   const stat = (statName: "beauty" | "stamina" | "temperament" | "health" | "fertility", mv: number, fv: number) => {
-    const raw = (mv + fv) / 2 + rng.gauss(0, STAT_NOISE) - penalty + statBonus(statName);
+    let raw = (mv + fv) / 2 + rng.gauss(0, STAT_NOISE) - penalty + statBonus(statName);
+    // 양방향 변이 — 잭팟/먹통은 배타적 (둘 다 굴리되 잭팟 우선)
+    if (rng.roll(STAT_JACKPOT_RATE)) {
+      raw += STAT_JACKPOT_MIN + rng.range(0, STAT_JACKPOT_MAX - STAT_JACKPOT_MIN);
+    } else if (rng.roll(STAT_DUD_RATE)) {
+      raw -= STAT_DUD_MIN + rng.range(0, STAT_DUD_MAX - STAT_DUD_MIN);
+    }
     return Math.max(0, Math.min(100, Math.round(raw)));
   };
 

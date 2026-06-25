@@ -25,7 +25,7 @@ import type { Visitor, ActiveVisit } from "./visitorSystem";
 import { deriveSeed } from "./visitorSystem";
 import { resolvePregnancy, type Pregnancy } from "./pregnancySystem";
 import ConceptionBubble from "./ConceptionBubble";
-import { savePregnancyAction, birthAction, relocateAnimalAction, sellAnimalAction, sendAnimalToSireAction, commitSettlementAction } from "@/app/code/games/farm/[saveId]/actions";
+import { savePregnancyAction, birthAction, relocateAnimalAction, sellAnimalAction, sendAnimalToSireAction, commitSettlementAction, renameAnimalAction } from "@/app/code/games/farm/[saveId]/actions";
 import { getSpecies } from "./species";
 import { getSocialRank } from "./species/humanProfile";
 import OwnerRoomModal, { type SettlementSummary } from "./OwnerRoomModal";
@@ -314,6 +314,19 @@ export default function FarmInteriorPage({ save, rooms, roomAnimals, nurseryAnim
     }
   };
 
+  const handleRename = async (animalId: string, name: string) => {
+    try {
+      await renameAnimalAction({ saveId: save.id, animalId, name });
+      // 모달이 닫히지 않게 selectedAnimal 의 name 만 낙관적 갱신
+      setSelectedAnimal((prev) =>
+        prev && prev.id === animalId ? { ...prev, name: name.trim() || null } : prev,
+      );
+      router.refresh();
+    } catch (e) {
+      console.error("[handleRename] error:", e);
+    }
+  };
+
   // ── 정산 / 잠들기 ─────────────────────────────────────────────────────
 //
 // 정산 day = 잠든 시점이 자정 전(evening)이면 clock.day,
@@ -344,6 +357,7 @@ const handleSleep = async () => {
     setMoneyDelta(0);
     setDailyCounters({ births: 0, sellsTotal: 0, sireFame: 0 });
     setOwnerRoom(false);
+    clock.setTime(settlementDay + 1, TICK_WAKE);
     router.refresh();
   } catch (e) {
     console.error("[handleSleep] error:", e);
@@ -475,6 +489,8 @@ useEffect(() => {
           animal={selectedAnimal}
           currentDay={clock.day}
           onClose={() => setSelectedAnimal(null)}
+          onRename={handleRename}
+          animalsLookup={[...roomAnimals, ...nurseryAnimals]}
           actions={{
             availableRooms: availableRoomsForRelocate,
             onRelocate: handleRelocate,

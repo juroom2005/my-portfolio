@@ -4,6 +4,7 @@
 
 import type { Species } from "./types";
 import { SKIN_TONE_GENE } from "./sharedGenes";
+import { detectMutationColor } from "./mutationColors";
 
 export const RABBIT: Species = {
   id: "rabbit",
@@ -29,7 +30,11 @@ export const RABBIT: Species = {
         { code: "B", label_ko: "검정", dominant: true },
         { code: "b", label_ko: "흰", dominant: false },
       ],
-      expression: ([a, b]) => (a === "B" || b === "B" ? "검정" : "흰"),
+      expression: ([a, b]) => {
+        const mut = detectMutationColor([a, b]);
+        if (mut) return mut;
+        return a === "B" || b === "B" ? "검정" : "흰";
+      },
       player_selectable: true,
     },
     {
@@ -53,6 +58,8 @@ export const RABBIT: Species = {
       ],
       // 다중 대립유전자 — R 있으면 무조건 붉은, 없으면 동형접합만 발현
       expression: ([a, b]) => {
+        const mut = detectMutationColor([a, b]);
+        if (mut) return mut;
         if (a === "R" || b === "R") return "붉은";
         if (a === "p" && b === "p") return "분홍";
         return "회색";
