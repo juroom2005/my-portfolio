@@ -61,6 +61,11 @@ export default function AnimalCard({ animal, currentDay, variant = "compact", on
   // 사생아 구체 라벨 (metadata.bastard_of 가 있으면 "후작의 사생아" 등으로 override)
   const bastardOverride = useMemo(() => getBastardOverride(animal), [animal]);
 
+  const isPregnant = useMemo(() => {
+    const preg = (animal.metadata as Record<string, unknown> | null)?.pregnancy;
+    return !!(preg && typeof preg === "object");
+  }, [animal.metadata]);
+
   // active_traits 표시용 — noble_bastard 라벨을 구체 라벨로 교체
   const displayTraits = useMemo(() => {
     if (!bastardOverride) return d.activeTraits;
@@ -77,6 +82,7 @@ export default function AnimalCard({ animal, currentDay, variant = "compact", on
         currentDay={currentDay}
         grade={grade}
         breed={breed}
+        isPregnant={isPregnant}
         onClick={onClick}
       />
     );
@@ -89,6 +95,7 @@ export default function AnimalCard({ animal, currentDay, variant = "compact", on
       grade={grade}
       breed={breed}
       displayTraits={displayTraits}
+      isPregnant={isPregnant}
       onClick={onClick}
     />
   );
@@ -102,6 +109,7 @@ function CompactCard({
   grade,
   breed,
   displayTraits,
+  isPregnant,
   onClick,
 }: {
   animal: AnimalRow;
@@ -110,6 +118,7 @@ function CompactCard({
   grade: ReturnType<typeof gradeColor>;
   breed: { tier: BreedTier; label: string } | null;
   displayTraits: ActiveTraitInfo[];
+  isPregnant: boolean;
   onClick?: () => void;
 }) {
   const age = d.ageInDays(currentDay);
@@ -194,6 +203,7 @@ function CompactCard({
             {d.sexSymbol}
           </span>
           {breed && <BreedBadge tier={breed.tier} label={breed.label} size="sm" />}
+          {isPregnant && <PregnantBadge />}
         </div>
         <div className="font-mono" style={{ fontSize: 10, color: FARM.inkSoft, marginTop: 2 }}>
           {d.speciesLabel} · {d.isAdult ? `성체 D${age}` : `아기 D${age} → 성체까지 ${toAdult}일`}
@@ -226,6 +236,7 @@ function RoomCard({
   currentDay,
   grade,
   breed,
+  isPregnant,
   onClick,
 }: {
   animal: AnimalRow;
@@ -233,6 +244,7 @@ function RoomCard({
   currentDay: number;
   grade: ReturnType<typeof gradeColor>;
   breed: { tier: BreedTier; label: string } | null;
+  isPregnant: boolean;
   onClick?: () => void;
 }) {
   const age = d.ageInDays(currentDay);
@@ -279,6 +291,9 @@ function RoomCard({
         <span style={{ color: animal.sex === "F" ? "#D14D8A" : "#3D7BD1", marginLeft: 4 }}>
           {d.sexSymbol}
         </span>
+         {isPregnant && (
+          <span style={{ marginLeft: 4, fontSize: 11 }} title="임신 중">💖</span>
+        )}
       </div>
       <div className="font-mono" style={{ fontSize: 9, color: FARM.inkSoft }}>
         D{age}
@@ -399,6 +414,30 @@ function GradeBadge({
   );
 }
 
+// ── 임신 배지 ───────────────────────────────────────────────────────────
+function PregnantBadge() {
+  return (
+    <span
+      title="임신 중"
+      className="font-mono"
+      style={{
+        background: "rgba(255,143,168,0.18)",
+        color: "#9C4368",
+        border: "1px solid rgba(255,143,168,0.55)",
+        padding: "1px 6px",
+        fontSize: 10,
+        borderRadius: 3,
+        letterSpacing: "0.02em",
+        fontWeight: 700,
+        whiteSpace: "nowrap",
+        lineHeight: 1.3,
+      }}
+    >
+      💖 임신
+    </span>
+  );
+}
+
 // ── BreedBadge (혈통 배지) ──────────────────────────────────────────────
 //
 // 작고 절제된 칩. 순종은 호출 측에서 안 그리도록 거름 (여기는 항상 렌더).
@@ -429,6 +468,7 @@ function BreedBadge({ tier, label, size = "sm" }: { tier: BreedTier; label: stri
     </span>
   );
 }
+
 
 // ── 사생아 라벨 구체화 헬퍼 ─────────────────────────────────────────────
 //

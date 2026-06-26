@@ -488,6 +488,7 @@ useEffect(() => {
         <AnimalDetailModal
           animal={selectedAnimal}
           currentDay={clock.day}
+          currentTick={clock.tick}
           onClose={() => setSelectedAnimal(null)}
           onRename={handleRename}
           animalsLookup={[...roomAnimals, ...nurseryAnimals]}

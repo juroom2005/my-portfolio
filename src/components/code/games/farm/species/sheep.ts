@@ -12,9 +12,9 @@ export const SHEEP: Species = {
   label_en: "sheep-folk",
   rarity_tier: 1,
 
-  maturity_days: 5,
-  gestation_days: 3,
-  lifespan_days: 90,
+  maturity_days: 15,
+  gestation_days: 9,
+  lifespan_days: 180,
 
   base_fertility: 0.7,
   litter_min: 1,

@@ -12,9 +12,9 @@ export const RABBIT: Species = {
   label_en: "rabbit-folk",
   rarity_tier: 1,
 
-  maturity_days: 3,
-  gestation_days: 2,
-  lifespan_days: 60,
+  maturity_days: 9,
+  gestation_days: 6,
+  lifespan_days: 120,
 
   base_fertility: 0.85,
   litter_min: 2,

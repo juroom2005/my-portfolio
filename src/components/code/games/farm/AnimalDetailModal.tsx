@@ -14,6 +14,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { AnimalRow, RoomRow } from "./dbTypes";
+import PregnancyAnimation from "./PregnancyAnimation";
 import {
   describeAnimal,
   describeGenesWithGenotype,
@@ -61,6 +62,7 @@ const FARM = {
 type Props = {
   animal: AnimalRow;
   currentDay: number;
+  currentTick?: number;
   onClose: () => void;
   /** 보육실 졸업 액션용. 없으면 액션 패널 안 그림. */
   actions?: {
@@ -75,7 +77,30 @@ type Props = {
 
 };
 
-export default function AnimalDetailModal({ animal, currentDay, onClose, actions, onRename, animalsLookup }: Props) {
+export default function AnimalDetailModal({ animal, currentDay, currentTick, onClose, actions, onRename, animalsLookup }: Props) {
+    const pregnancy = useMemo(() => {
+    const preg = (animal.metadata as Record<string, unknown> | null)?.pregnancy;
+    if (preg && typeof preg === "object") return preg as {
+      conceivedDay: number;
+      dueDay: number;
+      fetus_condition?: number;
+    };
+    return null;
+  }, [animal.metadata]);
+    const pregProgress = useMemo(() => {
+    if (!pregnancy) return 0;
+    const span = pregnancy.dueDay - pregnancy.conceivedDay;
+    if (span <= 0) return 1;
+    const elapsedDays =
+      currentDay - pregnancy.conceivedDay + (currentTick ?? 0) / 144;
+    return Math.max(0, Math.min(1, elapsedDays / span));
+  }, [pregnancy, currentDay, currentTick]);
+ 
+  const pregDayNo = pregnancy
+    ? Math.max(0, currentDay - pregnancy.conceivedDay)
+    : 0;
+  const pregTotal = pregnancy ? pregnancy.dueDay - pregnancy.conceivedDay : 0;
+  const pregDaysLeft = pregnancy ? Math.max(0, pregnancy.dueDay - currentDay) : 0;
   const d = useMemo(() => describeAnimal(animal), [animal]);
   const grade = gradeColor(animal.grade);
   const genes = useMemo(() => describeGenesWithGenotype(animal), [animal]);
@@ -306,6 +331,23 @@ export default function AnimalDetailModal({ animal, currentDay, onClose, actions
                 {d.speciesLabel} · GEN {animal.generation}
               </span>
               {breedTier !== "pure" && <BreedBadge tier={breedTier} label={breedLabel} />}
+               {pregnancy && (
+                <span
+                  className="font-mono"
+                  style={{
+                    background: "rgba(255,143,168,0.18)",
+                    color: "#9C4368",
+                    border: "1px solid rgba(255,143,168,0.55)",
+                    padding: "1px 7px",
+                    fontSize: 10,
+                    borderRadius: 3,
+                    letterSpacing: "0.04em",
+                    fontWeight: 700,
+                  }}
+                >
+                  💖 임신
+                </span>
+              )}
             </div>
           </div>
           <div
@@ -492,6 +534,35 @@ export default function AnimalDetailModal({ animal, currentDay, onClose, actions
               )}
             </KVGrid>
           </Section>
+
+          {pregnancy && (
+            <Section title="임신" en="PREGNANCY">
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                <PregnancyAnimation progress={pregProgress} size={180} />
+          
+                <div className="font-mono" style={{ fontSize: 12, color: FARM.inkSoft, letterSpacing: "0.05em" }}>
+                  임신 {pregDayNo}일차 / {pregTotal}일 · {pregDaysLeft === 0 ? "출산 임박" : `D-${pregDaysLeft}`}
+                </div>
+          
+                {/* 진행 게이지 */}
+                <div style={{ width: "100%", height: 6, background: "rgba(156,67,104,0.12)", borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${Math.round(pregProgress * 100)}%`, background: "#E48AAB", transition: "width .5s linear" }} />
+                </div>
+          
+                {/* 태아 컨디션 — 값 있을 때만 (마일스톤에서 본격 구현) */}
+                {typeof pregnancy.fetus_condition === "number" && (
+                  <div style={{ width: "100%" }}>
+                    <div className="font-mono" style={{ fontSize: 10, color: FARM.inkFaint, marginBottom: 3 }}>
+                      태아 컨디션 {pregnancy.fetus_condition}
+                    </div>
+                    <div style={{ height: 6, background: "rgba(61,47,31,0.08)", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pregnancy.fetus_condition}%`, background: fetusColor(pregnancy.fetus_condition) }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
         </div>
       </div>
 
@@ -1307,6 +1378,14 @@ function ConfirmRow({
       </div>
     </div>
   );
+}
+
+function fetusColor(v: number): string {
+  if (v >= 80) return "#639922";
+  if (v >= 60) return "#BA7517";
+  if (v >= 40) return "#EF9F27";
+  if (v >= 20) return "#E2734A";
+  return "#E24B4A";
 }
 
 function RelocateForm({

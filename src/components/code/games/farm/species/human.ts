@@ -16,9 +16,9 @@ export const HUMAN: Species = {
   rarity_tier: 1,
 
   // 인간은 농장에서 안 키우지만, 혼혈 임신 계산에 쓰일 수 있어 값은 채워둠.
-  maturity_days: 7,
-  gestation_days: 4,
-  lifespan_days: 120,
+  maturity_days: 21,
+  gestation_days: 12,
+  lifespan_days: 240,
 
   base_fertility: 0.6,
   litter_min: 1,
