@@ -24,6 +24,8 @@ export type SettlementSummary = {
   sellsTotal: number;
   /** 오늘 송환 명성 (이미 farm_saves 에 반영됨, 표시용) */
   sireFame: number;
+  roomsBought: number;
+  roomsCost: number;
 };
 
 type Props = {
@@ -352,7 +354,7 @@ function BedSpot({
 
 // ── 정산 리포트 ─────────────────────────────────────────────────────────
 function SettlementReport({ summary }: { summary: SettlementSummary }) {
-  const totalGain = summary.moneyDelta + summary.sellsTotal;
+  const totalGain = summary.moneyDelta + summary.sellsTotal - summary.roomsCost;
 
   return (
     <div
@@ -395,7 +397,9 @@ function SettlementReport({ summary }: { summary: SettlementSummary }) {
         <Row label="방문료 수입" value={`+${summary.moneyDelta}₵`} accent={summary.moneyDelta > 0} />
         <Row label="출생한 새 식구" value={`${summary.births}명`} />
         <Row label="판매 수익" value={`+${summary.sellsTotal}₵`} accent={summary.sellsTotal > 0} />
-        <Row label="송환 명성" value={`+${summary.sireFame}`} accent={summary.sireFame > 0} tone="pink" />
+         {summary.roomsBought > 0 && (
+          <Row label={`방 확장 (${summary.roomsBought}칸)`} value={`−${summary.roomsCost}₵`} tone="warn" />
+        )}
       </div>
 
       <div
@@ -437,9 +441,16 @@ function Row({
   label: string;
   value: string;
   accent?: boolean;
-  tone?: "green" | "pink";
+  tone?: "green" | "pink" | "warn";
 }) {
-  const valueColor = accent ? (tone === "pink" ? PANEL.pink : "#3D5500") : PANEL.ink;
+  const valueColor =
+    tone === "warn"
+      ? PANEL.warn
+      : accent
+        ? tone === "pink"
+          ? PANEL.pink
+          : "#3D5500"
+        : PANEL.ink;
   return (
     <div
       style={{

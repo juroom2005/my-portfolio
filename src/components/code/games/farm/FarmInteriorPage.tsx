@@ -25,8 +25,9 @@ import type { Visitor, ActiveVisit } from "./visitorSystem";
 import { deriveSeed } from "./visitorSystem";
 import { resolvePregnancy, type Pregnancy } from "./pregnancySystem";
 import ConceptionBubble from "./ConceptionBubble";
-import { savePregnancyAction, birthAction, relocateAnimalAction, sellAnimalAction, sendAnimalToSireAction, commitSettlementAction, renameAnimalAction } from "@/app/code/games/farm/[saveId]/actions";
+import { savePregnancyAction, birthAction, relocateAnimalAction, sellAnimalAction, sendAnimalToSireAction, commitSettlementAction, renameAnimalAction, buyRoomAction, updateLevelAction } from "@/app/code/games/farm/[saveId]/actions";
 import { getSpecies } from "./species";
+import { levelProgress, levelForFame, roomCap, nextRoomCost, canBuyRoom, roomSlotFor, ROOMS_PER_LEVEL } from "./levelDesign";
 import { getSocialRank } from "./species/humanProfile";
 import OwnerRoomModal, { type SettlementSummary } from "./OwnerRoomModal";
 
@@ -104,8 +105,9 @@ export default function FarmInteriorPage({ save, rooms, roomAnimals, nurseryAnim
     births: 0,
     sellsTotal: 0,
     sireFame: 0,
+    roomsBought: 0,
+    roomsCost: 0,
   });
-
   /** 농장주 방 모달. false 면 닫힘, 'manual' 면 자유 진입, 'forced' 면 02:00 트리거 */
   const [ownerRoom, setOwnerRoom] = useState<false | "manual" | "forced">(false);
 
@@ -327,6 +329,39 @@ export default function FarmInteriorPage({ save, rooms, roomAnimals, nurseryAnim
     }
   };
 
+// ── 방 구매(농장 확장) ─────────────────────────────────────────────────
+  const [buying, setBuying] = useState(false);
+
+  const handleBuyRoom = async () => {
+    if (buying) return;
+    const check = canBuyRoom(save.level, rooms.length, displayMoney);
+    if (!check.ok) return;
+    setBuying(true);
+    const slot = roomSlotFor(rooms.length);
+    try {
+      const res = await buyRoomAction({
+        saveId: save.id,
+        cost: check.cost,
+        floor: slot.floor,
+        position: slot.position,
+      });
+      if (!res.ok) {
+        console.warn("[handleBuyRoom] rejected:", res.reason);
+        return;
+      }
+      setDailyCounters((d) => ({
+        ...d,
+        roomsBought: d.roomsBought + 1,
+        roomsCost: d.roomsCost + check.cost,
+      }));
+      router.refresh();
+    } catch (e) {
+      console.error("[handleBuyRoom] error:", e);
+    } finally {
+      setBuying(false);
+    }
+  };
+
   // ── 정산 / 잠들기 ─────────────────────────────────────────────────────
 //
 // 정산 day = 잠든 시점이 자정 전(evening)이면 clock.day,
@@ -345,17 +380,23 @@ const handleSleep = async () => {
     sellsTotal: dailyCounters.sellsTotal,
     sireFame: dailyCounters.sireFame,
   };
+    // handleSleep 안, commitSettlementAction 호출부를 이렇게 교체:
   try {
-    await commitSettlementAction({
+    const result = await commitSettlementAction({
       saveId: save.id,
       settlementDay,
       moneyDelta,
       summary,
     });
-    // 정산 commit 후 메모리 카운터 리셋. router.refresh 가 save 재취득 →
-    // useFarmClock 의 initialDay/initialTick 가 새 값 → 06:00 부터 다시 시작.
+
+    // 정산으로 확정된 명성 기준 레벨 재판정
+    const newLevel = levelForFame(result.fame_after);
+    if (newLevel > save.level) {
+      await updateLevelAction({ saveId: save.id, level: newLevel });
+    }
+
     setMoneyDelta(0);
-    setDailyCounters({ births: 0, sellsTotal: 0, sireFame: 0 });
+    setDailyCounters({ births: 0, sellsTotal: 0, sireFame: 0, roomsBought: 0, roomsCost: 0 });
     setOwnerRoom(false);
     clock.setTime(settlementDay + 1, TICK_WAKE);
     router.refresh();
@@ -445,6 +486,17 @@ useEffect(() => {
               onAnimalClick={setSelectedAnimal}
               activeVisits={visitors.activeVisits}
             />
+            <RoomExpandBar
+              level={save.level}
+              roomCount={rooms.length}
+              money={displayMoney}
+              fameLeft={(() => {
+                const p = levelProgress(save.fame);
+                return p.nextFloor == null ? null : p.nextFloor - save.fame;
+              })()}
+              busy={buying}
+              onBuy={handleBuyRoom}
+            />
           </div>
 
           <WaitingRoom
@@ -512,6 +564,8 @@ useEffect(() => {
               moneyDelta,
               sellsTotal: dailyCounters.sellsTotal,
               sireFame: dailyCounters.sireFame,
+              roomsBought: dailyCounters.roomsBought,
+              roomsCost: dailyCounters.roomsCost,
             }}
             onClose={() => setOwnerRoom(false)}
             onSleep={handleSleep}
@@ -1010,6 +1064,127 @@ function SectionHeader({ title, en, subline }: { title: string; en: string; subl
         >
           {subline}
         </span>
+      )}
+    </div>
+  );
+}
+
+// ── 방 확장 바 ──────────────────────────────────────────────────────────
+function RoomExpandBar({
+  level,
+  roomCount,
+  money,
+  fameLeft,
+  busy,
+  onBuy,
+}: {
+  level: number;
+  roomCount: number;
+  money: number;
+  fameLeft: number | null;
+  busy: boolean;
+  onBuy: () => void;
+}) {
+  const cap = roomCap(level);
+  const cost = nextRoomCost(level, roomCount);
+  const check = canBuyRoom(level, roomCount, money);
+  const capReached = roomCount >= cap;
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        padding: "10px 14px",
+        background: FARM.bgWarm,
+        border: `1px solid ${FARM.line}`,
+        borderRadius: 6,
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <span
+          className="font-mono"
+          style={{ fontSize: 9, color: FARM.inkFaint, letterSpacing: "0.2em" }}
+        >
+          방 확장
+        </span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: FARM.ink, lineHeight: 1.1 }}>
+          {roomCount} / {cap}
+          <span
+            className="font-mono"
+            style={{ fontSize: 10, color: FARM.inkSoft, marginLeft: 6, fontWeight: 600 }}
+          >
+            LVL {level}
+          </span>
+        </span>
+      </div>
+
+      <div style={{ flex: 1 }} />
+
+      {capReached ? (
+        <span
+          className="font-mono"
+          style={{ fontSize: 10, color: FARM.inkSoft, letterSpacing: "0.04em", textAlign: "right" }}
+        >
+          상한 도달 · 레벨업하면 +{ROOMS_PER_LEVEL}칸
+          {fameLeft != null && (
+            <>
+              <br />
+              다음 레벨까지 명성 {fameLeft}
+            </>
+          )}
+        </span>
+      ) : (
+        <>
+          <div style={{ textAlign: "right" }}>
+            <div
+              className="font-mono"
+              style={{ fontSize: 9, color: FARM.inkFaint, letterSpacing: "0.15em" }}
+            >
+              다음 방
+            </div>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: check.ok ? FARM.ink : FARM.warn,
+                lineHeight: 1.1,
+              }}
+            >
+              {cost.toLocaleString()}₵
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={check.ok && !busy ? onBuy : undefined}
+            disabled={!check.ok || busy}
+            className="font-mono"
+            style={{
+              background: check.ok ? FARM.neon : "transparent",
+              border: `1px solid ${check.ok ? FARM.neonDeep : FARM.lineSolid}`,
+              color: FARM.ink,
+              fontSize: 10,
+              letterSpacing: "0.18em",
+              fontWeight: 700,
+              padding: "9px 18px",
+              borderRadius: 3,
+              cursor: check.ok && !busy ? "pointer" : "not-allowed",
+              opacity: check.ok || busy ? 1 : 0.55,
+              transition: "all .15s",
+            }}
+            title={
+              check.reason === "not_enough_money"
+                ? "돈이 부족해요"
+                : check.reason === "cap_reached"
+                  ? "레벨업이 필요해요"
+                  : "방 한 칸 구매"
+            }
+          >
+            {busy ? "구매 중…" : check.reason === "not_enough_money" ? "돈 부족" : "＋ 방 구매"}
+          </button>
+        </>
       )}
     </div>
   );

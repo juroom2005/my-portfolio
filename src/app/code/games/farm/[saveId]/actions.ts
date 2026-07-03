@@ -281,3 +281,62 @@ export async function renameAnimalAction(input: {
   revalidatePath(`/code/games/farm/${input.saveId}`);
   return { name: (data as { name: string | null }).name };
 }
+
+// actions.ts — 파일 맨 끝(renameAnimalAction 아래)에 추가
+
+// ── 방 구매(농장 확장) ─────────────────────────────────────────────────
+//
+// 화면의 "내 돈" 은 save.money + moneyDelta 합산이지만, 실제 차감은 DB 의
+// save.money 에서 이뤄진다. 클라이언트가 canBuyRoom 으로 미리 검증한 cost 와
+// 배치 좌표(floor/position)를 넘기고, 서버는 방 개수/잔액을 재검증한다.
+export type BuyRoomInput = {
+  saveId: string;
+  cost: number;
+  floor: number;
+  position: number;
+};
+
+export type BuyRoomResult = {
+  ok: boolean;
+  reason: string | null;
+  money_after: number;
+  new_room_id: string | null;
+  room_count: number;
+};
+
+export async function buyRoomAction(input: BuyRoomInput): Promise<BuyRoomResult> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("buy_room", {
+    p_save_id: input.saveId,
+    p_cost: input.cost,
+    p_floor: input.floor,
+    p_position: input.position,
+  });
+  if (error) {
+    console.error("[buyRoomAction] error:", error);
+    throw new Error(`buyRoom failed: ${error.message}`);
+  }
+  // RPC 가 returns table → 배열로 옴. 첫 행 사용.
+  const row = (Array.isArray(data) ? data[0] : data) as BuyRoomResult;
+  revalidatePath(`/code/games/farm/${input.saveId}`);
+  return row;
+}
+
+// ── 레벨 갱신 ───────────────────────────────────────────────────────────
+// 정산 직후 호출. 명성으로 산출한 레벨이 현재보다 높으면 farm_saves.level 갱신.
+export async function updateLevelAction(input: {
+  saveId: string;
+  level: number;
+}): Promise<{ ok: boolean }> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("farm_saves")
+    .update({ level: input.level, updated_at: new Date().toISOString() })
+    .eq("id", input.saveId);
+  if (error) {
+    console.error("[updateLevelAction] error:", error);
+    throw new Error(`updateLevel failed: ${error.message}`);
+  }
+  revalidatePath(`/code/games/farm/${input.saveId}`);
+  return { ok: true };
+}
