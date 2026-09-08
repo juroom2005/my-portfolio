@@ -77,5 +77,5 @@ export function canBuyRoom(
 }
 
 export function roomSlotFor(idx: number): { floor: number; position: number } {
-  return { floor: Math.floor(idx / 3) + 1, position: idx % 3 };
+  return { floor: Math.floor(idx / 3) + 1, position: (idx % 3) + 1 };
 }

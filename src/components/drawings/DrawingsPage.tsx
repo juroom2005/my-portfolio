@@ -10,7 +10,7 @@ import Lightbox from "./Lightbox";
 type Mode = "grid" | "masonry" | "river" | "contact";
 type Sort = "date" | "medium" | "title";
 
-const ALL_MEDIUMS: Medium[] = ["oil", "ink", "digital", "mixed"];
+const ALL_MEDIUMS: Medium[] = ["illust", "sketch", "standing", "etc"];
 
 /**
  * Drawings inner page — interactive gallery.

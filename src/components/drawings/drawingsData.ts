@@ -1,7 +1,7 @@
 // Mock drawings data. Replace with a Supabase fetch later — shape stays the same.
 // Curated palettes so the gallery reads as one body of work, not random colors.
 
-export type Medium = "oil" | "ink" | "digital" | "mixed";
+export type Medium = "illust" | "sketch" | "standing" | "etc";
 
 export type Drawing = {
   id: string;
@@ -34,7 +34,7 @@ const TITLES = [
   "미완성", "정오", "구름 그림자", "강가에서",
 ];
 
-const MEDIUMS: Medium[] = ["oil", "ink", "digital", "mixed"];
+const MEDIUMS: Medium[] = ["illust", "sketch", "standing", "etc"];
 
 // Asymmetric aspect ratios — gives masonry/river layouts something to chew on.
 const ASPECTS = [1, 0.75, 1.33, 1, 1.5, 0.66, 1, 1.25, 0.8, 1.1, 1, 1.4, 0.9];

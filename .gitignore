@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# supabase schema dumps (커밋 금지 — 저장소 public)
+/supabase/schema_*.sql
