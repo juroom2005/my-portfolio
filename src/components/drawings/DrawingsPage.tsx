@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DiamondCursor from "../landing/DiamondCursor";
-import { DRAWINGS, type Drawing, type Medium } from "./drawingsData";
+import { type Drawing, type Medium } from "./drawingsData";
 import Thumb from "./Thumb";
-import Lightbox from "./Lightbox";
 
 type Mode = "grid" | "masonry" | "river" | "contact";
 type Sort = "date" | "medium" | "title";
@@ -21,7 +20,7 @@ const ALL_MEDIUMS: Medium[] = ["illust", "sketch", "standing", "etc"];
  *
  * Data is mocked — see `drawingsData.ts`. Swap with a Supabase query when ready.
  */
-export default function DrawingsPage() {
+export default function DrawingsPage({ posts }: { posts: Drawing[] }) {
   const router = useRouter();
 
   const [mouse, setMouse] = useState({ x: -1000, y: -1000 });
@@ -30,13 +29,15 @@ export default function DrawingsPage() {
   const [filter, setFilter] = useState<Set<Medium>>(new Set(ALL_MEDIUMS));
   const [sort, setSort] = useState<Sort>("date");
   const [hover, setHover] = useState<Drawing | null>(null);
-  const [open, setOpen] = useState<Drawing | null>(null);
   const [transitioning, setTransitioning] = useState(false);
 
   const goBack = () => {
     setTransitioning(true);
     setTimeout(() => router.push("/"), 200);
   };
+
+  // 썸네일 클릭 → 글 상세로 이동
+  const openPost = (d: Drawing) => router.push(`/drawings/${d.id}`);
 
   const leaveTimer = useRef<number | null>(null);
 
@@ -56,7 +57,7 @@ export default function DrawingsPage() {
   };
 
   const filtered = useMemo(() => {
-    const arr = DRAWINGS.filter((d) => filter.has(d.medium));
+    const arr = posts.filter((d) => filter.has(d.medium));
     arr.sort((a, b) => {
       if (sort === "date") return b.date.localeCompare(a.date);
       if (sort === "title") return a.title.localeCompare(b.title);
@@ -64,23 +65,7 @@ export default function DrawingsPage() {
       return 0;
     });
     return arr;
-  }, [filter, sort]);
-
-  // Keyboard nav inside lightbox
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!open) return;
-      if (e.key === "Escape") setOpen(null);
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-        e.preventDefault();
-        const i = filtered.findIndex((d) => d.id === open.id);
-        const next = e.key === "ArrowRight" ? (i + 1) % filtered.length : (i - 1 + filtered.length) % filtered.length;
-        setOpen(filtered[next]);
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, filtered]);
+  }, [filter, sort, posts]);
 
   const toggleMedium = (m: Medium) => {
     setFilter((prev) => {
@@ -112,7 +97,7 @@ export default function DrawingsPage() {
           type="button"
           onMouseEnter={() => handleEnter(d)}
           onMouseLeave={handleLeave}
-          onClick={() => setOpen(d)}
+          onClick={() => openPost(d)}
           style={{
             position: "relative",
             aspectRatio: "1/1",
@@ -147,7 +132,7 @@ export default function DrawingsPage() {
           type="button"
           onMouseEnter={() => handleEnter(d)}
           onMouseLeave={handleLeave}
-          onClick={() => setOpen(d)}
+          onClick={() => openPost(d)}
           style={{
             display: "block",
             width: "100%",
@@ -177,7 +162,7 @@ export default function DrawingsPage() {
           type="button"
           onMouseEnter={() => handleEnter(d)}
           onMouseLeave={handleLeave}
-          onClick={() => setOpen(d)}
+          onClick={() => openPost(d)}
           style={{
             position: "relative",
             flex: "0 0 auto",
@@ -207,7 +192,7 @@ export default function DrawingsPage() {
             type="button"
             onMouseEnter={() => handleEnter(d)}
             onMouseLeave={handleLeave}
-            onClick={() => setOpen(d)}
+            onClick={() => openPost(d)}
             style={{
               position: "relative",
               aspectRatio: "1/1",
@@ -310,25 +295,43 @@ export default function DrawingsPage() {
             }}
           />
           <span style={{ opacity: 0.6 }}>
-            {filtered.length} / {DRAWINGS.length}
+            {filtered.length} / {posts.length}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={goBack}
-          className="font-mono"
-          style={{
-            border: "1px solid var(--ink)",
-            background: "var(--paper)",
-            padding: "4px 10px",
-            fontSize: 10,
-            letterSpacing: "0.2em",
-            fontWeight: 700,
-            cursor: "none",
-          }}
-        >
-          ← BACK TO INDEX
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => router.push("/drawings/write")}
+            className="font-mono"
+            style={{
+              border: "1px solid var(--ink)",
+              background: "var(--neon)",
+              padding: "4px 10px",
+              fontSize: 10,
+              letterSpacing: "0.2em",
+              fontWeight: 700,
+              cursor: "none",
+            }}
+          >
+            + NEW
+          </button>
+          <button
+            type="button"
+            onClick={goBack}
+            className="font-mono"
+            style={{
+              border: "1px solid var(--ink)",
+              background: "var(--paper)",
+              padding: "4px 10px",
+              fontSize: 10,
+              letterSpacing: "0.2em",
+              fontWeight: 700,
+              cursor: "none",
+            }}
+          >
+            ← BACK TO INDEX
+          </button>
+        </div>
       </header>
 
       {/* Title row */}
@@ -590,26 +593,13 @@ export default function DrawingsPage() {
         }}
       >
         <span style={{ fontSize: 9, letterSpacing: "0.25em", opacity: 0.6 }}>
-          VIEW · {mode.toUpperCase()} &nbsp;·&nbsp; {filtered.length} VISIBLE / {DRAWINGS.length} TOTAL
+          VIEW · {mode.toUpperCase()} &nbsp;·&nbsp; {filtered.length} VISIBLE / {posts.length} TOTAL
         </span>
         <span style={{ fontSize: 9, letterSpacing: "0.25em", opacity: 0.6 }}>
           ↑↓ ZOOM &nbsp;·&nbsp; SHIFT+M MODE &nbsp;·&nbsp; F FILTER
         </span>
       </footer>
 
-      {open && (
-        <Lightbox
-          piece={open}
-          index={filtered.findIndex((d) => d.id === open.id) + 1}
-          total={filtered.length}
-          onClose={() => setOpen(null)}
-          onNav={(dir) => {
-            const i = filtered.findIndex((d) => d.id === open.id);
-            const next = dir > 0 ? (i + 1) % filtered.length : (i - 1 + filtered.length) % filtered.length;
-            setOpen(filtered[next]);
-          }}
-        />
-      )}
       {transitioning && (
         <div
           style={{

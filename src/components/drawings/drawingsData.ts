@@ -12,6 +12,7 @@ export type Drawing = {
   accent: string;   // secondary color
   aspect: number;   // width / height
   idx: number;      // 1-based
+  coverUrl?: string; // 실제 cover 이미지 (DB 글). 없으면 도형 fallback
 };
 
 const BG = [
