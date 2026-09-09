@@ -24,7 +24,7 @@ export default function DrawingsPage({ posts }: { posts: Drawing[] }) {
   const router = useRouter();
 
   const [mouse, setMouse] = useState({ x: -1000, y: -1000 });
-  const [mode, setMode] = useState<Mode>("grid");
+  const [mode, setMode] = useState<Mode>("masonry");
   const [density, setDensity] = useState(6);
   const [filter, setFilter] = useState<Set<Medium>>(new Set(ALL_MEDIUMS));
   const [sort, setSort] = useState<Sort>("date");
